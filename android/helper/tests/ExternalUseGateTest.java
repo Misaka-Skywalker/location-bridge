@@ -1,0 +1,76 @@
+package org.locationbridge.source;
+
+public final class ExternalUseGateTest {
+    static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
+    static final long S = 1_000_000_000L;
+    static final long UTC = 1_700_000_000_000L;
+    public static void main(String[] args) {
+        ExternalUseGate gate = new ExternalUseGate(false);
+        check(gate.reason(100*S,UTC).equals("waiting_position"),"initial wait");
+        check(gate.onPosition(UTC,UTC,100*S),"valid event approved");
+        check(!gate.onPosition(UTC,UTC,100*S),"replayed event not approved");
+        check(gate.reason(100*S,UTC).equals("eligible"),"fresh position");
+        gate.onTxt(101*S);
+        check(gate.reason(101*S,UTC+1000).equals("static_txt") && gate.waitingAfterTxt(),"TXT blocks");
+        check(!gate.onPosition(UTC, UTC+2000, 102*S),"replayed event not approved after TXT");
+        check(gate.reason(102*S,UTC+2000).equals("static_txt"),"replayed old UTC cannot recover");
+        check(!gate.onPosition(UTC+500,UTC+2000,102*S),"older pre-TXT event not approved");
+        check(gate.reason(102*S,UTC+2000).equals("static_txt"),"newly delivered pre-TXT sample rejected");
+        check(!gate.onPosition(null,UTC+2000,102*S),"unknown event not approved");
+        check(!gate.onPosition(UTC+2100,UTC+2000,102*S),"future event not approved");
+        check(!gate.onPosition(UTC-20000,UTC+2000,102*S),"expired event not approved");
+        check(gate.reason(102*S,UTC+2000).equals("static_txt"),"unknown future stale fail closed");
+        check(gate.onPosition(UTC+1500,UTC+2000,102*S),"fresh event approved after TXT");
+        check(gate.reason(102*S,UTC+2000).equals("eligible") && !gate.waitingAfterTxt(),"post-TXT fresh sample restores");
+        check(gate.reason(112*S,UTC+12000).equals("stale_position"),"old position expires");
+        gate.setManualExcluded(true,112*S); gate.onTxt(113*S);
+        check(!gate.onPosition(UTC+14000,UTC+14000,114*S),"manually excluded event not approved");
+        check(gate.reason(114*S,UTC+14000).equals("manual_excluded"),"manual wins over TXT and position");
+        gate.setManualExcluded(false,114*S);
+        check(gate.reason(114*S,UTC+14000).equals("static_txt"),"manual restore preserves TXT block");
+        gate.onPosition(UTC+14000,UTC+14000,114*S);
+        check(gate.reason(114*S,UTC+14000).equals("static_txt"),"sample seen while excluded cannot re-enable");
+        gate.onPosition(UTC+15000,UTC+15000,115*S);
+        check(gate.reason(115*S,UTC+15000).equals("eligible"),"only newer sample restores");
+        gate.setManualExcluded(true,115*S);
+        gate.onPosition(UTC+16000,UTC+16000,116*S);
+        gate.setManualExcluded(false,116*S);
+        check(gate.reason(116*S,UTC+16000).equals("waiting_position"),"manual restore requires new position without TXT");
+        check(!gate.onPosition(UTC+16000,UTC+16000,116*S),"cached event is not approved");
+        check(gate.reason(116*S,UTC+16000).equals("waiting_position"),"manual restore rejects cached event");
+        check(!gate.onPosition(UTC+16500,UTC+17000,117*S - S/2),"queued callback sampled at restore cutoff is rejected");
+        check(gate.onPosition(UTC+17000,UTC+17000,117*S),"post-restore event approved");
+        check(gate.reason(117*S,UTC+17000).equals("eligible"),"manual restore accepts fresh new event");
+        check(gate.reason(117*S, UTC+999999999).equals("eligible"),"wall clock forward cannot age monotonic sample");
+        check(gate.reason(117*S, UTC+16999).equals("stale_position"),"backward clock rejected");
+        check(!gate.onPosition(UTC+18000,UTC+19000,117*S+S/2),"UTC advances but estimated monotonic position regresses");
+        gate.setManualExcluded(true,117*S); gate.resetSession();
+        check(gate.manualExcluded() && gate.reason(118*S,UTC+18000).equals("manual_excluded"),"reset preserves manual choice");
+        gate.setManualExcluded(false,118*S);
+        check(gate.reason(118*S,UTC+18000).equals("waiting_position"),"reset waits for sample");
+        ExternalUseGate initialManual = new ExternalUseGate(true);
+        initialManual.setManualExcluded(false, 200*S);
+        check(!initialManual.onPosition(UTC+99000, UTC+100000, 200*S), "queued old event rejected after initial manual restore");
+        check(initialManual.reason(200*S, UTC+100000).equals("waiting_position"), "initial restore still waits");
+        initialManual.resetSession();
+        check(!initialManual.onPosition(UTC+99000, UTC+100000, 200*S), "reset does not erase manual restore cutoff");
+        check(initialManual.onPosition(UTC+100001, UTC+100001, 201*S), "new event after initial restore approved");
+        ExternalUseGate invalidated = new ExternalUseGate(false);
+        check(invalidated.onPosition(UTC+200000,UTC+200000,300*S), "baseline eligible");
+        invalidated.invalidatePosition(301*S);
+        check(invalidated.reason(301*S, UTC+201000).equals("waiting_position"), "invalid notification revokes candidate");
+        check(!invalidated.onPosition(UTC+200500,UTC+201500,301*S+S/2), "queued position before invalidation remains rejected");
+        check(invalidated.onPosition(UTC+202000,UTC+202000,302*S), "position after invalidation recovers");
+        invalidated.onTxt(303*S);
+        invalidated.invalidatePosition(304*S);
+        check(invalidated.reason(304*S,UTC+204000).equals("static_txt") && invalidated.waitingAfterTxt(), "invalidation preserves TXT");
+        invalidated.setManualExcluded(true,305*S);
+        invalidated.invalidatePosition(306*S);
+        check(invalidated.manualExcluded() && invalidated.reason(306*S,UTC+206000).equals("manual_excluded"), "invalidation preserves manual exclusion");
+        invalidated.setManualExcluded(false,307*S);
+        check(invalidated.reason(307*S,UTC+207000).equals("static_txt"), "restore still preserves TXT");
+        check(!invalidated.onPosition(UTC+206500,UTC+207500,307*S+S/2), "queued sample before restore does not clear TXT");
+        check(invalidated.onPosition(UTC+208000,UTC+208000,308*S), "new sample clears preserved TXT");
+        System.out.println("ExternalUseGate tests passed");
+    }
+}
