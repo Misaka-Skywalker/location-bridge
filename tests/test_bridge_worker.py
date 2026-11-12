@@ -77,7 +77,8 @@ class FixValidationTests(unittest.TestCase):
 
     def test_status_heartbeat_and_changes(self):
         from unittest.mock import patch
-        with tempfile.TemporaryDirectory() as d, patch.object(worker.time, 'monotonic', side_effect=[0.0, 0.25, 0.5, 1.1, 1.2]), patch.object(worker, 'atomic_json') as write:
+        # Mock the worker clock boundary on both BOOTTIME and monotonic platforms.
+        with tempfile.TemporaryDirectory() as d, patch.object(worker, 'elapsed_time', side_effect=[0.0, 0.25, 0.5, 1.1, 1.2]), patch.object(worker, 'atomic_json') as write:
             status = worker.Status(Path(d), 'run')
             status.write(state='waiting')
             status.write(connected=False)
