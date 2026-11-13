@@ -7,12 +7,39 @@ import java.util.Map;
 final class LanguageCatalog {
     private static final Map<String,String> EN = new HashMap<>();
     static {
+        EN.put("接收机", "RX");
+        EN.put("接收机能力  5/5", "RECEIVER  5/5");
+        EN.put("未知", "Unknown");
+        EN.put("是", "Yes");
+        EN.put("否", "No");
+        EN.put("不可用", "Unavailable");
+        EN.put("GNSS 连续跟踪", "GNSS full tracking");
+        EN.put("启用：优先连续观测，功耗较高", "On: continuous measurements, higher power");
+        EN.put("关闭：由系统控制跟踪策略", "Off: system-managed tracking");
+        EN.put("参与解算卫星", "SV USED");
+        EN.put("可见卫星", "SV VISIBLE");
+        EN.put("已观测星座", "CONSTELLATIONS");
+        EN.put("已观测信号类型", "SIGNAL TYPES");
+        EN.put("平均载噪比", "MEAN C/N0");
+        EN.put("原始观测条数", "RAW OBS");
+        EN.put("连续跟踪请求", "FULL TRK REQ");
+        EN.put("硬件确认", "HW CONFIRMED");
+        EN.put("姿态路径", "ATT SOURCE");
+        EN.put("加速度路径", "ACC SOURCE");
+        EN.put("地磁姿态", "Geomagnetic");
+        EN.put("系统姿态", "System fused");
+        EN.put("加速度减重力", "ACC − GRAV");
+        EN.put("系统线加速度", "Linear ACC");
+        EN.put("环境气压", "PRESSURE");
+        EN.put("位置请求间隔", "REQ INTERVAL");
+        EN.put("能力按实际数据识别，未知不代表不支持\n气压不参与高度解算", "Observed capabilities; unknown ≠ unsupported\nPressure is excluded from altitude");
+
         EN.put("位置", "POS");
         EN.put("高度速度", "ALT/SPD");
         EN.put("惯性", "INS");
         EN.put("系统", "SYS");
         EN.put("定位桥  /  LOCATION BRIDGE", "LOCATION BRIDGE");
-        EN.put("位置总览  1/4", "POSITION  1/4");
+        EN.put("位置总览  1/5", "POSITION  1/5");
         EN.put("iPad：尚未收到状态", "iPad: No status received");
         EN.put("前往“设置 → 打开 Termux”启动连接", "Open Settings → Termux to connect");
         EN.put("● 手机定位已停止", "● Phone location stopped");
@@ -83,7 +110,7 @@ final class LanguageCatalog {
         EN.put("GNSS 地速", "GNSS GS");
         EN.put("推算 %.2f s", "DR %.2f s");
         EN.put("已停用", "Disabled");
-        EN.put("高度与速度  2/4", "ALTITUDE / SPEED  2/4");
+        EN.put("高度与速度  2/5", "ALTITUDE / SPEED  2/5");
         EN.put("高度（米）", "ALT (m)");
         EN.put("高度（英尺）", "ALT (ft)");
         EN.put("高度基准", "ALT datum");
@@ -91,7 +118,7 @@ final class LanguageCatalog {
         EN.put("地速精度", "GS ACC");
         EN.put("磁差（估算）", "VAR (estimated)");
         EN.put("真航迹角精度", "TRK ACC");
-        EN.put("惯性推算  3/4", "DEAD RECKONING  3/4");
+        EN.put("惯性推算  3/5", "DEAD RECKONING  3/5");
         EN.put("推算功能", "DR function");
         EN.put("当前定位", "Current position");
         EN.put("实测位置", "Measured position");
@@ -105,7 +132,7 @@ final class LanguageCatalog {
         EN.put("误差上限", "Error limit");
         EN.put("校准来源", "Calibration source");
         EN.put("实测高度", "Measured altitude");
-        EN.put("系统状态  4/4", "SYSTEM STATUS  4/4");
+        EN.put("系统状态  4/5", "SYSTEM STATUS  4/5");
         EN.put("手机定位", "Phone location");
         EN.put("运行中", "Running");
         EN.put("已停止", "Stopped");

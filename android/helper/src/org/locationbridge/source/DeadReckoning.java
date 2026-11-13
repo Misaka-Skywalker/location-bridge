@@ -33,6 +33,11 @@ final class DeadReckoning {
     private double east,north,velocityEast,velocityNorth,anchorSpeed,anchorSpeedAccuracy,anchorBearingAccuracy;
     private String status="waiting_anchor";
     private boolean active;
+    private long maximumHorizon=MAX_HORIZON;
+
+    synchronized void setMaximumHorizonNanos(long nanos) {
+        maximumHorizon=Math.max(0,Math.min(MAX_HORIZON,nanos));
+    }
 
     synchronized boolean anchor(Selector.Fix gps,double speed,double speedAccuracy,double bearing,double bearingAccuracy,long now) {
         if (gps==null || !"gps".equals(gps.source) || !Selector.valid(gps,now) || gps.timestamp<=0 || gps.sequence<=0
@@ -77,7 +82,7 @@ final class DeadReckoning {
         if (!active || origin==null) return false;
         // Samples arriving after the GPS callback may still predate the GPS fix.
         if (elapsed<=origin.elapsed) return true;
-        if (now<origin.elapsed || now-origin.elapsed>MAX_HORIZON) { invalidate("horizon_expired"); return false; }
+        if (now<origin.elapsed || now-origin.elapsed>maximumHorizon) { invalidate("horizon_expired"); return false; }
         if (elapsed-lastSensor>MAX_GAP) { invalidate("sensor_timing"); return false; }
         return integrate(elapsed,accelerationEast,accelerationNorth);
     }
@@ -98,7 +103,7 @@ final class DeadReckoning {
         if (!active || origin==null) return status;
         if (now<origin.elapsed || now<lastSensor) { invalidate("clock_error"); return status; }
         long sinceAnchor=now-origin.elapsed;
-        if (sinceAnchor>MAX_HORIZON) { invalidate("horizon_expired"); return status; }
+        if (sinceAnchor>maximumHorizon) { invalidate("horizon_expired"); return status; }
         if (lastSensor==origin.elapsed || now-lastSensor>MAX_SENSOR_AGE) {
             if (sinceAnchor<=GNSS_FRESH) return "gnss_fresh";
             invalidate("sensor_stale"); return status;

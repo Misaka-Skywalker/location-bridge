@@ -6,6 +6,8 @@ Location Bridge is an experimental Android-to-iPad location bridge. An Android h
 
 **Research and testing only. Do not rely on this project for safety-critical decisions.** Simulated location can affect other apps on the iPad. A clear command may fail if the connection is lost; verify that the iPad has returned to its normal location state after testing.
 
+Version 0.4.0 introduces an [experimental adaptive positioning core](docs/public/adaptive-core.md). Device checks confirmed native location, GNSS diagnostics and authenticated Termux snapshots; moving end-to-end validation is still pending.
+
 ## Status and limits
 
 - Fixed points and simulated tracks have been observed on an iPad over Wi-Fi and USB. The tested USB path does not require a LAN. Continuous real-world movement through the full Android-to-iPad path has not yet been validated; long-duration and lock-screen operation remain unverified.

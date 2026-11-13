@@ -20,7 +20,13 @@ final class NativeMotionSensors implements SensorEventListener {
     private static final long SECOND = 1_000_000_000L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final SensorManager manager;
-    private final Sensor rotation, acceleration;
+    private final Sensor standardRotation, geomagneticRotation, linearAcceleration, rawAcceleration, gravity, magnetometer, gyroscope, pressure;
+    private Sensor rotation, acceleration;
+    private boolean degradedRotation, gravityFallback, gravityRegistered, magneticRegistered, pressureRegistered;
+    private float[] gravityValues, magneticValues;
+    private long gravityTime, magneticTime, pressureTime, sessionStartNanos;
+    private int gravityAccuracy, magneticAccuracy;
+    private double pressureHpa=Double.NaN;
     private final Listener listener;
     private final Object lock = new Object();
     private boolean started, rotationRegistered, accelerationRegistered, referenceValid, referenceAltitudeAssumed;
@@ -30,6 +36,8 @@ final class NativeMotionSensors implements SensorEventListener {
     private double declination;
     private final MotionOrientationHistory orientations = new MotionOrientationHistory();
     private final MotionAccelerationGate accelerationGate = new MotionAccelerationGate();
+    private final SensorRetryState retry = new SensorRetryState();
+    private long retryToken;
     private long lifecycle, activeLifecycle;
     private boolean desiredRunning;
     private long referenceGeneration;
@@ -38,12 +46,20 @@ final class NativeMotionSensors implements SensorEventListener {
         if (context == null || listener == null) throw new IllegalArgumentException("context and listener required");
         this.listener = listener;
         manager = (SensorManager)context.getSystemService(Context.SENSOR_SERVICE);
-        rotation = manager == null ? null : manager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
-        acceleration = manager == null ? null : manager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+        standardRotation = sensor(Sensor.TYPE_ROTATION_VECTOR);
+        geomagneticRotation = sensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR);
+        linearAcceleration = sensor(Sensor.TYPE_LINEAR_ACCELERATION);
+        rawAcceleration = sensor(Sensor.TYPE_ACCELEROMETER);
+        gravity = sensor(Sensor.TYPE_GRAVITY);
+        magnetometer = sensor(Sensor.TYPE_MAGNETIC_FIELD);
+        gyroscope = sensor(Sensor.TYPE_GYROSCOPE);
+        pressure = sensor(Sensor.TYPE_PRESSURE);
     }
+    private Sensor sensor(int type) { return manager==null?null:manager.getDefaultSensor(type); }
+    private boolean register(Sensor sensor) { try { return sensor!=null && manager.registerListener(this,sensor,50_000,0,main); } catch(RuntimeException error) { return false; } }
     void start() {
         final long generation;
-        synchronized(lock) { if (desiredRunning) return; desiredRunning=true; generation=++lifecycle; }
+        synchronized(lock) { if (desiredRunning) return; desiredRunning=true; generation=++lifecycle; retryToken=retry.start(); }
         runMain(() -> {
             boolean replace;
             synchronized(lock) { if (!desiredRunning || lifecycle!=generation) return; replace=started && activeLifecycle!=generation; }
@@ -54,7 +70,7 @@ final class NativeMotionSensors implements SensorEventListener {
     }
     void stop() {
         final long generation;
-        synchronized(lock) { desiredRunning=false; generation=++lifecycle; }
+        synchronized(lock) { desiredRunning=false; generation=++lifecycle; retry.stop(); }
         runMain(() -> {
             synchronized(lock) { if (desiredRunning || lifecycle!=generation) return; }
             stopMain();
@@ -77,16 +93,61 @@ final class NativeMotionSensors implements SensorEventListener {
         listener.onInvalidated(reason);
     }
     private void startMain() {
-        synchronized(lock) { if (started) return; started=true; state="starting"; }
-        if (manager == null || rotation == null || acceleration == null) { invalidate("sensor_unavailable"); return; }
-        boolean r = false, a = false;
-        try {
-            r = manager.registerListener(this,rotation,50_000,0,main);
-            a = manager.registerListener(this,acceleration,50_000,0,main);
-        } catch (RuntimeException ignored) { }
-        synchronized(lock) { rotationRegistered=r; accelerationRegistered=a; }
-        if (!r || !a) { manager.unregisterListener(this); synchronized(lock) { rotationRegistered=false; accelerationRegistered=false; } invalidate("registration_failed"); }
-        else synchronized(lock) { state="waiting_reference"; }
+        final long generation, token;
+        synchronized(lock) {
+            if(started || !desiredRunning || activeLifecycle!=lifecycle) return;
+            generation=lifecycle; token=retryToken;
+            started=true;state="starting";sessionStartNanos=SystemClock.elapsedRealtimeNanos();
+        }
+        boolean r=false, a=false, useGeomagnetic=false, useGravity=false, mag=false, grav=false, press=false;
+        Sensor selectedRotation=null, selectedAcceleration=null;
+        if(manager!=null) {
+            r=register(standardRotation);
+            if(r) selectedRotation=standardRotation;
+            if(!r && geomagneticRotation!=null && magnetometer!=null) {
+                mag=register(magnetometer);
+                boolean g=mag && register(geomagneticRotation);
+                if(g) { selectedRotation=geomagneticRotation;useGeomagnetic=true;r=true; }
+                else if(mag) {manager.unregisterListener(this,magnetometer);mag=false;}
+            }
+            a=register(linearAcceleration);
+            if(a) selectedAcceleration=linearAcceleration;
+            if(!a && rawAcceleration!=null && gravity!=null) {
+                grav=register(gravity);
+                boolean ar=grav && register(rawAcceleration);
+                if(ar) {selectedAcceleration=rawAcceleration;useGravity=true;a=true;}
+                else if(grav) {manager.unregisterListener(this,gravity);grav=false;}
+            }
+            if(r && a) press=register(pressure);
+        }
+        boolean current;
+        synchronized(lock) { current=desiredRunning && lifecycle==generation && activeLifecycle==generation && retry.valid(token); }
+        if(!current) { if(manager!=null) manager.unregisterListener(this); return; }
+        if(!r || !a) {
+            if(manager!=null) manager.unregisterListener(this);
+            long delay;
+            synchronized(lock) {
+                if(!desiredRunning || lifecycle!=generation || !retry.valid(token)) return;
+                started=false;rotation=null;acceleration=null;rotationRegistered=false;accelerationRegistered=false;
+                gravityRegistered=false;magneticRegistered=false;pressureRegistered=false;
+                degradedRotation=false;gravityFallback=false;sessionStartNanos=0;
+                delay=retry.fail(token);
+            }
+            invalidate("sensor_unavailable");
+            if(delay>0) main.postDelayed(()->{
+                synchronized(lock) { if(!desiredRunning || lifecycle!=generation || activeLifecycle!=generation || !retry.valid(token)) return; }
+                startMain();
+            },delay);
+            return;
+        }
+        synchronized(lock) {
+            if(!desiredRunning || lifecycle!=generation || !retry.valid(token)) {manager.unregisterListener(this);return;}
+            rotation=selectedRotation;acceleration=selectedAcceleration;
+            degradedRotation=useGeomagnetic;gravityFallback=useGravity;
+            magneticRegistered=mag;gravityRegistered=grav;pressureRegistered=press;
+            rotationRegistered=true;accelerationRegistered=true;state="waiting_reference";
+            retry.success(token);
+        }
     }
     private void stopMain() {
         if (manager != null) manager.unregisterListener(this);
@@ -95,6 +156,10 @@ final class NativeMotionSensors implements SensorEventListener {
             referenceGeneration++; rotationTime=0; accelerationGate.clear(); referenceTime=0; orientations.clear();
             rotationAccuracy=SensorManager.SENSOR_STATUS_UNRELIABLE; accelerationAccuracy=SensorManager.SENSOR_STATUS_UNRELIABLE;
             headingAccuracy="unknown"; state="stopped";
+            gravityValues=null; magneticValues=null; gravityTime=magneticTime=pressureTime=0;
+            gravityAccuracy=magneticAccuracy=SensorManager.SENSOR_STATUS_UNRELIABLE;
+            pressureHpa=Double.NaN; gravityRegistered=false; magneticRegistered=false; pressureRegistered=false;
+            degradedRotation=false;gravityFallback=false;rotation=null;acceleration=null;sessionStartNanos=0;
         }
         listener.onInvalidated("stopped");
     }
@@ -132,21 +197,43 @@ final class NativeMotionSensors implements SensorEventListener {
             active=started;
             if (sensor==rotation) rotationAccuracy=accuracy;
             else if (sensor==acceleration) accelerationAccuracy=accuracy;
+            else if (sensor==gravity) gravityAccuracy=accuracy;
+            else if (sensor==magnetometer) magneticAccuracy=accuracy;
             else return;
-            if (sensor==rotation && accuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) { orientations.clear(); }
+            if (sensor==rotation && accuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) { orientations.clear(); headingAccuracy="unknown"; }
+            if (sensor==gravity && accuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) { gravityValues=null;gravityTime=0; }
+            if (sensor==magnetometer && accuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) { magneticValues=null;magneticTime=0;orientations.clear(); }
         }
-        if (active && accuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) invalidate("sensor_accuracy_low");
+        if (active && accuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM && (sensor==rotation || sensor==acceleration || (gravityFallback && sensor==gravity) || (degradedRotation && sensor==magnetometer))) invalidate("sensor_accuracy_low");
     }
     @Override public void onSensorChanged(SensorEvent event) {
         // Registration specifies the main Handler; listeners must remain serialized here.
         if (Looper.myLooper()!=Looper.getMainLooper()) { main.post(() -> invalidate("wrong_thread")); return; }
         synchronized(lock) { if (!desiredRunning || lifecycle!=activeLifecycle || !started || !rotationRegistered || !accelerationRegistered) return; }
         long now=SystemClock.elapsedRealtimeNanos(), t=event.timestamp;
+        if(t<sessionStartNanos) return; // queued callback from an earlier registration epoch
+        if(event.sensor==pressure) {
+            if(t>0 && t<=now && t>pressureTime && event.values!=null && event.values.length>0 && Float.isFinite(event.values[0]) && event.values[0]>100 && event.values[0]<1200) synchronized(lock) { pressureHpa=event.values[0];pressureTime=t; }
+            return;
+        }
+        if(event.sensor==gravity || event.sensor==magnetometer) {
+            if(event.values==null || event.values.length<3 || t<=0 || t>now || event.accuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) { synchronized(lock) { if(event.sensor==gravity){gravityValues=null;gravityTime=0;}else{magneticValues=null;magneticTime=0;orientations.clear();} } invalidate("invalid_sensor_sample");return; }
+            for(int i=0;i<3;i++) if(!Float.isFinite(event.values[i])) { synchronized(lock) { if(event.sensor==gravity){gravityValues=null;gravityTime=0;}else{magneticValues=null;magneticTime=0;orientations.clear();} } invalidate("invalid_sensor_sample");return; }
+            boolean outOfOrder;
+            synchronized(lock) {
+                outOfOrder=event.sensor==gravity?t<=gravityTime:t<=magneticTime;
+                if(event.sensor==gravity) { if(outOfOrder) gravityValues=null; else {gravityValues=event.values.clone();gravityTime=t;gravityAccuracy=event.accuracy;} }
+                else { if(outOfOrder) {magneticValues=null;orientations.clear();} else {magneticValues=event.values.clone();magneticTime=t;magneticAccuracy=event.accuracy;} }
+            }
+            if(outOfOrder) invalidate("sensor_timing");
+            return;
+        }
         if (t<=0 || t>now || event.accuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) {
             if (event.sensor==rotation) synchronized(lock) { orientations.clear(); }
             invalidate("invalid_sensor_sample"); return;
         }
         if (event.sensor==rotation) {
+            if(degradedRotation && !MotionSensorPolicy.magneticValid(magneticValues,magneticAccuracy,magneticTime,t)) { synchronized(lock) { orientations.clear(); } invalidate("magnetic_unavailable");return; }
             if (event.values == null || event.values.length<3) { synchronized(lock) { orientations.clear(); } invalidate("invalid_rotation"); return; }
             for (float v:event.values) if (!Float.isFinite(v)) { synchronized(lock) { orientations.clear(); } invalidate("invalid_rotation"); return; }
             float h=event.values.length>4 ? event.values[4] : -1;
@@ -162,6 +249,7 @@ final class NativeMotionSensors implements SensorEventListener {
             return;
         }
         if (event.sensor!=acceleration) return;
+        if(degradedRotation && !MotionSensorPolicy.magneticValid(magneticValues,magneticAccuracy,magneticTime,t)) { synchronized(lock) {orientations.clear();} invalidate("magnetic_unavailable");return; }
         float[] current; double d; String issue=null;
         synchronized(lock) {
             String decision=accelerationGate.observe(t,referenceTime,now,referenceValid);
@@ -174,15 +262,31 @@ final class NativeMotionSensors implements SensorEventListener {
         }
         if (issue!=null) { invalidate(issue); return; }
         try {
-            double[] horizontal=MotionTransform.horizontal(current,event.values,d);
+            float[] input=event.values;
+            if(gravityFallback) {
+                if(gravityAccuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) throw new IllegalArgumentException();
+                double[] linear=GravitySubtraction.subtract(input,t,gravityValues,gravityTime,now,rawAcceleration.getMaximumRange());
+                input=new float[]{(float)linear[0],(float)linear[1],(float)linear[2]};
+            }
+            double[] horizontal=MotionTransform.horizontal(current,input,d);
             synchronized(lock) { samples++; state="active"; }
             listener.onSample(t,horizontal[0],horizontal[1]);
         } catch (IllegalArgumentException ex) { invalidate("invalid_acceleration"); }
     }
+    long predictionHorizonNanos() { synchronized(lock) {return MotionSensorPolicy.horizon(degradedRotation,gravityFallback,"known".equals(headingAccuracy));} }
     JSONObject snapshot() {
         synchronized(lock) {
             try { return new JSONObject().put("state",state).put("started",started)
-                    .put("rotation_available",rotation!=null).put("acceleration_available",acceleration!=null)
+                    .put("rotation_available",standardRotation!=null || geomagneticRotation!=null).put("acceleration_available",linearAcceleration!=null || (rawAcceleration!=null && gravity!=null))
+                    .put("gyro_available",gyroscope!=null).put("magnetic_available",magnetometer!=null)
+                    .put("gravity_available",gravity!=null).put("raw_acceleration_available",rawAcceleration!=null)
+                    .put("standard_rotation_available",standardRotation!=null).put("geomagnetic_rotation_available",geomagneticRotation!=null)
+                    .put("linear_acceleration_available",linearAcceleration!=null).put("pressure_available",pressure!=null)
+                    .put("selected_backend",!rotationRegistered || !accelerationRegistered ? "unavailable" : (degradedRotation?"geomagnetic":"rotation_vector")+"+"+(gravityFallback?"gravity_subtraction":"linear_acceleration"))
+                    .put("degraded",degradedRotation || gravityFallback || !"known".equals(headingAccuracy))
+                    .put("request_hz",20).put("prediction_horizon_s",predictionHorizonNanos()/SECOND)
+                    .put("pressure_state",!started?"stopped":!pressureRegistered?"unavailable":pressureTime==0?"waiting":SystemClock.elapsedRealtimeNanos()-pressureTime>5*SECOND?"stale":"active")
+                    .put("pressure_hpa",pressureTime==0 || SystemClock.elapsedRealtimeNanos()-pressureTime>5*SECOND?JSONObject.NULL:pressureHpa)
                     .put("rotation_registered",rotationRegistered).put("acceleration_registered",accelerationRegistered)
                     .put("rotation_accuracy",rotationAccuracy).put("acceleration_accuracy",accelerationAccuracy)
                     .put("heading_accuracy",headingAccuracy).put("reference_valid",referenceValid)

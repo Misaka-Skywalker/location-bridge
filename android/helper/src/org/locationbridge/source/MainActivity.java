@@ -124,12 +124,24 @@ public final class MainActivity extends Activity {
             case "PAIR": confirmPairing();break;
             case "LOC": startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));break;
             case "SETTINGS":
-                String[] labels={Language.tr("定位和通知权限"),Language.tr("与 Termux 配对"),Language.tr("系统定位设置"),Language.tr("打开 Termux（连接 iPad）"),"Language / 语言"};
-                String[] actions={"AUTH","PAIR","LOC","TERM","LANG"};
+                String[] labels={Language.tr("定位和通知权限"),Language.tr("与 Termux 配对"),Language.tr("系统定位设置"),Language.tr("GNSS 连续跟踪"),Language.tr("打开 Termux（连接 iPad）"),"Language / 语言"};
+                String[] actions={"AUTH","PAIR","LOC","TRACK","TERM","LANG"};
                 new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
                         .setTitle(Language.tr("设置"))
                         .setItems(labels,(dialog,index)->runPanelAction(actions[index]))
                         .setNegativeButton(Language.tr("返回"),null).show();
+                break;
+            case "TRACK":
+                boolean tracking=getSharedPreferences("native_gnss",MODE_PRIVATE).getBoolean("full_tracking",true);
+                new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
+                        .setTitle(Language.tr("GNSS 连续跟踪"))
+                        .setSingleChoiceItems(new String[]{Language.tr("启用：优先连续观测，功耗较高"),Language.tr("关闭：由系统控制跟踪策略")},tracking?0:1,(dialog,index)->{
+                            boolean on=index==0;
+                            LocationService current=LocationService.instance;
+                            if(current!=null) current.setFullTrackingEnabled(on);
+                            else getSharedPreferences("native_gnss",MODE_PRIVATE).edit().putBoolean("full_tracking",on).apply();
+                            dialog.dismiss();updateStatus();
+                        }).setNegativeButton(Language.tr("返回"),null).show();
                 break;
             case "LANG":
                 new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))

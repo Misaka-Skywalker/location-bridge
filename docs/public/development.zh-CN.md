@@ -12,7 +12,7 @@
 python3 android/helper/build.py --sdk /path/to/android-sdk --build-tools 36.0.0
 ```
 
-也可设置 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`；`JAVA_HOME` 用于选择 JDK。输出为 `android/apks/location-bridge-source-0.3.1.apk`。构建会创建本地签名密钥；请安全保存以便后续更新，切勿提交或分享。CI 中无需可安装签名 APK 时可使用 `--unsigned`。源码发布不包含 SDK、密钥和 APK。
+也可设置 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`；`JAVA_HOME` 用于选择 JDK。输出为 `android/apks/location-bridge-source-0.4.0.apk`。构建会创建本地签名密钥；请安全保存以便后续更新，切勿提交或分享。CI 中无需可安装签名 APK 时可使用 `--unsigned`。源码发布不包含 SDK、密钥和 APK。
 
 ## 准备运行环境
 
@@ -56,7 +56,7 @@ adb shell pm grant org.locationbridge.source android.permission.DUMP
 adb shell pm revoke org.locationbridge.source android.permission.DUMP
 ```
 
-部分厂商还会拦截 ADB 授权。在测试的 OPPO 上，需要用户同意后临时开启开发者选项中的“禁止权限监控”才能授予权限；授予后已恢复该开关，助手授权仍然保留。这个开关影响系统级监控，不应由安装脚本静默更改。
+部分厂商还会拦截 ADB 授权。部分设备可能需要经用户同意临时修改开发者选项才能授予权限。这个开关影响系统级监控，不应由安装脚本静默更改。
 
 不授予权限时，已经处于主机模式的 USB 连接仍可使用；否则请在系统 USB 设置中将控制权切换为“本机”，并按机型要求开启 OTG。没有数据线、多个设备、无法解析的端口状态、模拟端口或切换失败都不能视为已连接。不要在连接电脑时运行纠正测试，因为角色切换可能中断 USB 调试。底层接口依据 [AOSP UsbService](https://android.googlesource.com/platform/frameworks/base/+/HEAD/services/usb/java/com/android/server/usb/UsbService.java)，并非稳定的公开 Android API。
 
@@ -70,7 +70,7 @@ adb shell pm disable-user --user 0 com.android.mtp
 adb shell pm enable --user 0 com.android.mtp
 ```
 
-2026-11-13 在 OPPO K12s（Android 16）上验证了助手 0.3.1：停用上述 MTP 主机组件后，USB 启动自动将手机从从设备切为主机，同时保持受电方向；iPad 关闭 Wi-Fi 时完成了 30 秒模拟轨迹。工作进程最终记录为 `stopped`、`last_error=null`、`clear_pending=false`。这是单台设备上的验证，不能推定其他机型也支持该诊断接口。
+此前助手 0.3.1 的单机测试确认：停用冲突的 MTP 主机组件后，USB 数据角色自动切换为主机并保持受电方向；iPad 关闭 Wi-Fi 时完成了 30 秒模拟轨迹，工作进程正常停止且无错误或待清除状态。这只代表已测试的配置，不能推定其他固件表现相同。
 
 ## 数据流
 

@@ -12,7 +12,7 @@ The helper supports Android API 31 or newer. Install a JDK 17 or newer, Android 
 python3 android/helper/build.py --sdk /path/to/android-sdk --build-tools 36.0.0
 ```
 
-Alternatively set `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `JAVA_HOME` selects the JDK. The output is `android/apks/location-bridge-source-0.3.1.apk`. The build creates a local signing key; retain it securely for upgrades and never commit or share it. Use `--unsigned` for CI builds that do not need an installable signed APK. SDKs, keys and APKs are not shipped in this source release.
+Alternatively set `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `JAVA_HOME` selects the JDK. The output is `android/apks/location-bridge-source-0.4.0.apk`. The build creates a local signing key; retain it securely for upgrades and never commit or share it. Use `--unsigned` for CI builds that do not need an installable signed APK. SDKs, keys and APKs are not shipped in this source release.
 
 ## Runtime preparation
 
@@ -56,7 +56,7 @@ adb shell pm grant org.locationbridge.source android.permission.DUMP
 adb shell pm revoke org.locationbridge.source android.permission.DUMP
 ```
 
-Some vendors also restrict ADB grants. On the tested OPPO, granting required temporarily enabling Disable permission monitoring in developer options with user consent; restoring that switch afterward preserved the helper's grant. This affects system-wide monitoring and must not be changed silently by an installer.
+Some vendors also restrict ADB grants. On some devices, granting may require temporarily changing a developer option with user consent. This affects system-wide monitoring and must not be changed silently by an installer.
 
 Without this grant, USB connections already in host mode continue to work. Otherwise, select This device as controller in system USB settings and enable OTG if required by the device. Missing cables, multiple devices, unrecognized state, simulated ports and failed switches never count as connected. Do not run correction tests while attached to a computer: switching roles may interrupt USB debugging. The underlying interface comes from [AOSP UsbService](https://android.googlesource.com/platform/frameworks/base/+/HEAD/services/usb/java/com/android/server/usb/UsbService.java), not a stable public Android API.
 
@@ -70,7 +70,7 @@ adb shell pm disable-user --user 0 com.android.mtp
 adb shell pm enable --user 0 com.android.mtp
 ```
 
-Helper 0.3.1 was validated on an OPPO K12s running Android 16 on 2026-11-13. With that MTP host component disabled, USB startup changed the phone from device to host while preserving sink power. A 30-second simulated track completed with iPad Wi-Fi off. The worker ended with `stopped`, `last_error=null` and `clear_pending=false`. This validates one device configuration, not support for the diagnostic interface on other models.
+A prior helper 0.3.1 device test changed USB data role from device to host while preserving sink power. A 30-second simulated track completed with iPad Wi-Fi off after the conflicting MTP host component was disabled; the worker ended stopped with no last error or pending clearance. This is one tested configuration, not a guarantee for other firmware.
 
 ## Data flow
 

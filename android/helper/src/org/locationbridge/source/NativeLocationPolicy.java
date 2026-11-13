@@ -23,11 +23,15 @@ final class NativeLocationPolicy {
     }
     private final Map<String,Recovery> recoveries = new HashMap<>();
     private long rejects, switches;
+    private double agingRate=20;
     private String lastReason="waiting";
 
     private static boolean supported(String source) { return "gps".equals(source)||"fused".equals(source)||"network".equals(source); }
     private static long maxAge(String source) { return "fused".equals(source)?FUSED_MAX:GPS_MAX; }
-    private static double score(Selector.Fix f,long now) { return f.accuracy + 20.0*((now-f.elapsed)/(double)S); }
+    private double score(Selector.Fix f,long now) { return f.accuracy + agingRate*((now-f.elapsed)/(double)S); }
+    synchronized void setAgingRate(double metersPerSecond) {
+        agingRate=Double.isFinite(metersPerSecond)?Math.max(20,Math.min(460,metersPerSecond)):20;
+    }
     private static int priority(String source) { return "gps".equals(source)?0:"fused".equals(source)?1:2; }
     private static double distance(Selector.Fix a,Selector.Fix b) {
         double lat1=Math.toRadians(a.latitude),lat2=Math.toRadians(b.latitude);

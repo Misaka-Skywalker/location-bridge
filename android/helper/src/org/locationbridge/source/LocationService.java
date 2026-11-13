@@ -23,11 +23,13 @@ public final class LocationService extends Service {
     private final String session = UUID.randomUUID().toString();
     private final String[] names = {"fused", "gps", "network"};
     private final NativeLocationPolicy policy = new NativeLocationPolicy();
+    private final AdaptiveLocationProfile profile = new AdaptiveLocationProfile();
     private final NativeAltitude nativeAltitude = new NativeAltitude();
     private final GnssAltitude gnssAltitude = new GnssAltitude();
     private final DeadReckoning deadReckoning = new DeadReckoning();
     private final PositionPublication publication = new PositionPublication();
     private NativeMotionSensors motion;
+    private NativeGnssMonitor gnss;
     private JSONObject gnssMotion;
     private boolean inertialEnabled;
     private final Map<String, String> errors = new HashMap<>();
@@ -35,6 +37,8 @@ public final class LocationService extends Service {
     private final Map<String, Long> providerEpochs = new HashMap<>(), retryAfter = new HashMap<>();
     private final Map<String, Integer> retrySeconds = new HashMap<>();
     private final Map<String, Boolean> usable = new HashMap<>();
+    private final Map<String, Long> requestedIntervals = new HashMap<>();
+    private long requestIntervalMillis=500;
     private final Handler health = new Handler(Looper.getMainLooper());
     private final Runnable checkProviders = new Runnable() {
         @Override public void run() {
@@ -55,12 +59,15 @@ public final class LocationService extends Service {
         super.onCreate(); Language.init(this);
         instance = this;
         manager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        gnss = new NativeGnssMonitor(this);
         inertialEnabled = getSharedPreferences("native_inertial", MODE_PRIVATE).getBoolean("enabled", true);
         motion = new NativeMotionSensors(this, new NativeMotionSensors.Listener() {
             @Override public void onSample(long elapsed, double east, double north) {
                 synchronized (LocationService.this) {
-                    if (running && inertialEnabled)
+                    if (running && inertialEnabled) {
+                        deadReckoning.setMaximumHorizonNanos(motion.predictionHorizonNanos());
                         deadReckoning.acceleration(elapsed,east,north,SystemClock.elapsedRealtimeNanos());
+                    }
                 }
             }
             @Override public void onInvalidated(String reason) {
@@ -96,6 +103,7 @@ public final class LocationService extends Service {
         try {
             createNotification();
             running = true;
+            gnss.start(fullTrackingEnabled());
             if (inertialEnabled) motion.start();
             maintainProviders();
             health.postDelayed(checkProviders, 2000);
@@ -132,12 +140,13 @@ public final class LocationService extends Service {
     }
     private void withdraw(String name, String reason, long now) {
         LocationListener listener=listeners.remove(name);
+        requestedIntervals.remove(name);
         if (listener != null || Boolean.TRUE.equals(usable.get(name))) {
             providerEpochs.put(name,providerEpochs.getOrDefault(name,0L)+1);
             policy.remove(name,now);
             nativeAltitude.remove(name);
             if ("gps".equals(name)) gnssAltitude.clear();
-            if ("gps".equals(name)) { deadReckoning.invalidate(reason,SystemClock.elapsedRealtimeNanos()); gnssMotion=null; }
+            if ("gps".equals(name)) { deadReckoning.invalidate(reason,SystemClock.elapsedRealtimeNanos()); gnssMotion=null; profile.clearMotion(); }
         }
         usable.put(name,false);errors.put(name,reason);
         if (listener != null) try { manager.removeUpdates(listener); } catch (RuntimeException ignored) { }
@@ -145,6 +154,10 @@ public final class LocationService extends Service {
     private synchronized void maintainProviders() {
         if (!running) return;
         long now=SystemClock.elapsedRealtimeNanos();
+        gnss.refreshAvailability();
+        policy.setAgingRate(profile.agingRate(now));
+        Selector.Fix current=policy.selected(now);
+        requestIntervalMillis=profile.updateIntervalMillis(current!=null && now-current.elapsed<=2_000_000_000L,now);
         for (String name : names) {
             String issue=providerIssue(name);
             if (issue != null) { withdraw(name,issue,now); continue; }
@@ -154,7 +167,19 @@ public final class LocationService extends Service {
             }
             usable.put(name,true);
             if (!listeners.containsKey(name) && now>=retryAfter.getOrDefault(name,0L)) subscribe(name,now);
+            else if (listeners.containsKey(name) && requestedIntervals.getOrDefault(name,0L)!=intervalFor(name)) {
+                try {
+                    manager.requestLocationUpdates(name,requestFor(name),getMainExecutor(),listeners.get(name));
+                    requestedIntervals.put(name,intervalFor(name));
+                } catch (RuntimeException ignored) { /* Keep the original subscription if an OEM rejects a cadence update. */ }
+            }
         }
+    }
+    private long intervalFor(String name) { return "network".equals(name)?1000:requestIntervalMillis; }
+    private LocationRequest requestFor(String name) {
+        return new LocationRequest.Builder(intervalFor(name))
+                .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY).setMinUpdateIntervalMillis(500L)
+                .setMinUpdateDistanceMeters(0f).setMaxUpdateDelayMillis(0L).build();
     }
     private void subscribe(final String name, long now) {
         final long epoch=providerEpochs.getOrDefault(name,0L)+1;
@@ -169,14 +194,9 @@ public final class LocationService extends Service {
             }
         };
         try {
-            LocationRequest request = new LocationRequest.Builder(1000L)
-                    .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY)
-                    .setMinUpdateIntervalMillis(500L)
-                    .setMinUpdateDistanceMeters(0f)
-                    .setMaxUpdateDelayMillis(0L)
-                    .build();
-            manager.requestLocationUpdates(name, request, getMainExecutor(), listener);
+            manager.requestLocationUpdates(name, requestFor(name), getMainExecutor(), listener);
             listeners.put(name, listener);
+            requestedIntervals.put(name,intervalFor(name));
             errors.remove(name);retryAfter.remove(name);retrySeconds.remove(name);
         } catch (RuntimeException e) {
             providerEpochs.put(name,epoch+1);
@@ -189,6 +209,7 @@ public final class LocationService extends Service {
     private synchronized void receive(String name, Location loc, long epoch) {
         if (!running || providerEpochs.getOrDefault(name,0L)!=epoch || !listeners.containsKey(name)) return;
         long now = SystemClock.elapsedRealtimeNanos();
+        policy.setAgingRate(profile.agingRate(now));
         String issue=providerIssue(name);
         if (issue != null) { withdraw(name,issue,now); return; }
         if (!loc.hasAccuracy()) {
@@ -220,6 +241,7 @@ public final class LocationService extends Service {
             double speedAccuracy=loc.hasSpeedAccuracy()?loc.getSpeedAccuracyMetersPerSecond():Double.NaN;
             double bearing=loc.hasBearing()?loc.getBearing():Double.NaN;
             double bearingAccuracy=loc.hasBearingAccuracy()?loc.getBearingAccuracyDegrees():Double.NaN;
+            if (f.accuracy<=50) profile.observeGpsMotion(speed,speedAccuracy,f.elapsed,now);
             boolean hasHeight=loc.hasAltitude() && Double.isFinite(loc.getAltitude());
             double declination=Double.NaN;
             try {
@@ -245,6 +267,11 @@ public final class LocationService extends Service {
         }
     }
     private static Object finiteOrNull(double value) { return Double.isFinite(value)?value:JSONObject.NULL; }
+    boolean fullTrackingEnabled() { return getSharedPreferences("native_gnss",MODE_PRIVATE).getBoolean("full_tracking",true); }
+    synchronized void setFullTrackingEnabled(boolean enabled) {
+        getSharedPreferences("native_gnss",MODE_PRIVATE).edit().putBoolean("full_tracking",enabled).apply();
+        if (running) { gnss.stop(); gnss.start(enabled); }
+    }
     synchronized void setInertialEnabled(boolean enabled) {
         getSharedPreferences("native_inertial", MODE_PRIVATE).edit().putBoolean("enabled",enabled).apply();
         inertialEnabled=enabled;
@@ -261,11 +288,14 @@ public final class LocationService extends Service {
             if (available) enabled = manager.isProviderEnabled(name);
         } catch (RuntimeException e) { error = e.getClass().getSimpleName(); }
         return new JSONObject().put("available", available).put("enabled", enabled)
+                .put("requested_interval_ms",requestedIntervals.containsKey(name)?requestedIntervals.get(name):JSONObject.NULL)
                 .put("error", error == null ? JSONObject.NULL : error)
                 .put("registered",listeners.containsKey(name)).put("sample_state",policy.sourceReason(name,SystemClock.elapsedRealtimeNanos()));
     }
     synchronized JSONObject snapshot() throws Exception {
         long now = SystemClock.elapsedRealtimeNanos();
+        policy.setAgingRate(profile.agingRate(now));
+        deadReckoning.setMaximumHorizonNanos(motion.predictionHorizonNanos());
         JSONObject providers = new JSONObject();
         for (String name : names) {
             String issue=providerIssue(name);
@@ -299,12 +329,16 @@ public final class LocationService extends Service {
                 .put("altitude_m",height.altitude).put("elapsed_realtime_nanos",height.elapsed)
                 .put("vertical_accuracy_m",height.verticalAccuracy==null?JSONObject.NULL:height.verticalAccuracy);
         JSONObject inertial=new JSONObject().put("enabled",inertialEnabled)
+                .put("maximum_horizon_s",motion.predictionHorizonNanos()/1_000_000_000.0)
                 .put("reason",inertialEnabled?deadReckoning.reason(now):"disabled")
                 .put("active",output!=null && output.prediction!=null)
                 .put("sensors",motion.snapshot());
         Object velocity=gnssMotion;
         if (gnssMotion==null || now-gnssMotion.optLong("elapsed_realtime_nanos")>10_000_000_000L) velocity=JSONObject.NULL;
         return result.put("sample", sample).put("native_sample",nativeSample).put("gnss_motion",velocity)
+                .put("gnss_diagnostics",gnss.snapshot(now))
+                .put("adaptive",new JSONObject().put("requested_interval_ms",requestIntervalMillis)
+                    .put("aging_penalty_m_s",profile.agingRate(now)))
                 .put("inertial",inertial).put("gnss_altitude", altitudeJson).put("altitude",heightJson);
     }
     private JSONObject positionJson(PositionPublication.Output out) throws Exception {
@@ -396,6 +430,8 @@ public final class LocationService extends Service {
         listeners.clear();
         gnssAltitude.clear();
         nativeAltitude.clear();
+        gnss.stop();
+        profile.clearMotion();
         motion.stop();
         deadReckoning.invalidate("stopped",SystemClock.elapsedRealtimeNanos());
         if (instance == this) instance = null;
