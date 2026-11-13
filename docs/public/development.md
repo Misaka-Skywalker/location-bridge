@@ -62,6 +62,14 @@ Without this grant, USB connections already in host mode continue to work. Other
 
 A ready host role does not guarantee an available interface. USB file or photo transfer on the phone can hold the same device. Startup stops with an actionable message when the current run's log shows a definite busy failure, instead of reconnecting just because the daemon socket exists. Close the transfer session before retrying. The helper does not automatically force-stop or disable system applications.
 
+If the system MTP host component has been confirmed to restart and reclaim the interface, users of a dedicated device may choose to disable it. This affects importing files or photos from cameras, iPads and similar devices connected through OTG. It is not a routine installation requirement and requires explicit user consent. On devices with this component:
+
+```sh
+adb shell pm disable-user --user 0 com.android.mtp
+# Restore MTP host functionality when needed:
+adb shell pm enable --user 0 com.android.mtp
+```
+
 ## Data flow
 
 Android location providers → helper selection and optional bounded inertial estimate → authenticated local helper interface → Termux service/worker → pymobiledevice3 tunnel and DVT → iPad simulated latitude/longitude. USB and Wi-Fi are separate transport paths. Helper status and additional measurements do not imply that the iPad receives those measurements. BLE reception has a diagnostic path only.

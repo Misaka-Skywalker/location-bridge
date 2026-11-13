@@ -62,6 +62,14 @@ adb shell pm revoke org.locationbridge.source android.permission.DUMP
 
 主机角色就绪并不代表接口可用。手机的 USB 文件／照片传输可能占用同一设备；启动流程识别本轮日志中的明确占用错误后会停止并提示关闭传输，而不会只因服务套接字存在就继续重连。请退出相关传输会话后重试。助手不会自动强制停止或禁用系统应用。
 
+若已确认系统 MTP 主机组件反复重新启动并占用接口，专用设备的用户可以选择停用它。停用会影响手机通过 OTG 读取相机、iPad 等设备的文件或照片；这不是普通安装的必需步骤，执行前需用户明确同意。适用于存在该组件的设备：
+
+```sh
+adb shell pm disable-user --user 0 com.android.mtp
+# 需要恢复 MTP 主机功能时：
+adb shell pm enable --user 0 com.android.mtp
+```
+
 ## 数据流
 
 Android 定位提供器 → 助手选源和可选的有时限惯性推算 → 经认证的本地助手接口 → Termux 服务／工作进程 → pymobiledevice3 隧道和 DVT → iPad 模拟经纬度。USB 和 Wi-Fi 是不同的传输通道。助手的状态和其他测量值不代表 iPad 已接收这些数据；BLE 接收目前仅用于诊断。
