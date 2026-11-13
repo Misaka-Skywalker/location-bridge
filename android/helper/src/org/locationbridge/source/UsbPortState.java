@@ -63,8 +63,8 @@ final class UsbPortState {
             Matcher combinations=Pattern.compile("role_combinations=\\[([^\\]]*)\\]").matcher(status);
             if(!combinations.find()) return failure("unavailable");
             String choices=combinations.group(1);
-            boolean source=Pattern.compile("\\{\\s*power_role=source\\s+data_role=host\\s*}").matcher(choices).find();
-            boolean sink=Pattern.compile("\\{\\s*power_role=sink\\s+data_role=host\\s*}").matcher(choices).find();
+            boolean source=Pattern.compile("\\{\\s*power_role=source\\s+data_role=host\\s*\\}").matcher(choices).find();
+            boolean sink=Pattern.compile("\\{\\s*power_role=sink\\s+data_role=host\\s*\\}").matcher(choices).find();
             if(!"true".equals(field(entry,"can_change_data_role"))) {source=false;sink=false;}
             connected.add(new UsbPortState("host".equals(data)?"host":"device",id,power,data,source,sink));
         }

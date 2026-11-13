@@ -56,6 +56,8 @@ adb shell pm grant org.locationbridge.source android.permission.DUMP
 adb shell pm revoke org.locationbridge.source android.permission.DUMP
 ```
 
+Some vendors also restrict ADB grants. On the tested OPPO, granting required temporarily enabling Disable permission monitoring in developer options with user consent; restoring that switch afterward preserved the helper's grant. This affects system-wide monitoring and must not be changed silently by an installer.
+
 Without this grant, USB connections already in host mode continue to work. Otherwise, select This device as controller in system USB settings and enable OTG if required by the device. Missing cables, multiple devices, unrecognized state, simulated ports and failed switches never count as connected. Do not run correction tests while attached to a computer: switching roles may interrupt USB debugging. The underlying interface comes from [AOSP UsbService](https://android.googlesource.com/platform/frameworks/base/+/HEAD/services/usb/java/com/android/server/usb/UsbService.java), not a stable public Android API.
 
 ## Data flow

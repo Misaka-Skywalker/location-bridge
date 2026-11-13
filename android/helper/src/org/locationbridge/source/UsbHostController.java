@@ -31,10 +31,18 @@ final class UsbHostController {
         final boolean[] overflow={false};
         Thread reader=new Thread(()->{ try(InputStream in=p.getInputStream()) { byte[] b=new byte[4096]; int n; while((n=in.read(b))!=-1) { if(bytes.size()+n>262144){overflow[0]=true;p.destroy();break;} bytes.write(b,0,n); } } catch(Exception ignored) {} });
         reader.start(); boolean done=p.waitFor(left,TimeUnit.MILLISECONDS); if(!done) p.destroyForcibly(); reader.join(500);
-        if(!done||reader.isAlive()||overflow[0]||p.exitValue()!=0) throw new Exception("dumpsys failed");
+        if(!done||reader.isAlive()||overflow[0]||p.exitValue()!=0) {
+            android.util.Log.w("LocationBridgeUsb","USB query process failed: done="+done+", reader="+reader.isAlive()+", overflow="+overflow[0]+", exit="+(done?p.exitValue():-1));
+            throw new Exception("dumpsys failed");
+        }
         return new String(bytes.toByteArray(),StandardCharsets.UTF_8);
     }
-    private UsbPortState read(long deadline) throws Exception { return UsbPortState.parse(command(deadline)); }
+    private UsbPortState read(long deadline) throws Exception {
+        String text=command(deadline);
+        UsbPortState state=UsbPortState.parse(text);
+        if("unavailable".equals(state.result)) android.util.Log.w("LocationBridgeUsb","USB state unavailable: chars="+text.length()+", manager="+text.contains("port_manager={")+", permissionDenied="+text.contains("Permission Denial"));
+        return state;
+    }
     Result run(String operation,long deadline) {
         UsbPortState state=UsbPortState.failure("unavailable"); boolean attempted=false;
         if(!ACTIVE.tryLock()) return new Result("unavailable",false,state);
@@ -68,7 +76,10 @@ final class UsbHostController {
                 if(!"device".equals(state.result) || !id.equals(state.id)) return new Result("switch_failed",true,state);
             }
             return new Result(attempted?"switch_failed":"unsupported",attempted,state);
-        } catch(Exception e) { return new Result(attempted?"switch_failed":"unavailable",attempted,state); }
+        } catch(Exception e) {
+            android.util.Log.w("LocationBridgeUsb","USB check failed: "+e.getClass().getSimpleName());
+            return new Result(attempted?"switch_failed":"unavailable",attempted,state);
+        }
         finally { ACTIVE.unlock(); }
     }
 }

@@ -521,11 +521,13 @@ async def supervise(args, info):
                 except (OSError, ValueError, asyncio.TimeoutError):
                     status_issue = 'usb_role_failed'
                     raise RuntimeError('无法检查 USB 控制权；请打开定位助手并检查连接。') from None
+                atomic_json(session / 'usb-role.json', role)
                 if role['result'] != 'host' or role['data_role'] != 'host':
                     status_issue = 'usb_permission' if role['result'] == 'permission_required' else 'usb_role_failed'
                     if role['result'] == 'permission_required':
                         raise RuntimeError('USB 自动纠正未授权；需由电脑一次性授予定位助手 DUMP 权限，或在 USB 设置中手动选择本机控制。')
                     raise RuntimeError('无法切换 USB 控制权；请检查数据线、OTG 和系统 USB 设置。')
+                set_state('USB 主机角色已就绪；正在等待设备识别。')
                 end = asyncio.get_running_loop().time() + 5
                 while not devices and asyncio.get_running_loop().time() < end:
                     if stopped(): raise InterruptedError('已停止')

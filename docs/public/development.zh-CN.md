@@ -56,6 +56,8 @@ adb shell pm grant org.locationbridge.source android.permission.DUMP
 adb shell pm revoke org.locationbridge.source android.permission.DUMP
 ```
 
+部分厂商还会拦截 ADB 授权。在测试的 OPPO 上，需要用户同意后临时开启开发者选项中的“禁止权限监控”才能授予权限；授予后已恢复该开关，助手授权仍然保留。这个开关影响系统级监控，不应由安装脚本静默更改。
+
 不授予权限时，已经处于主机模式的 USB 连接仍可使用；否则请在系统 USB 设置中将控制权切换为“本机”，并按机型要求开启 OTG。没有数据线、多个设备、无法解析的端口状态、模拟端口或切换失败都不能视为已连接。不要在连接电脑时运行纠正测试，因为角色切换可能中断 USB 调试。底层接口依据 [AOSP UsbService](https://android.googlesource.com/platform/frameworks/base/+/HEAD/services/usb/java/com/android/server/usb/UsbService.java)，并非稳定的公开 Android API。
 
 ## 数据流
