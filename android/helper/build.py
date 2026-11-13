@@ -77,7 +77,10 @@ def main():
     run(java / 'java', '-cp', tools / 'lib/d8.jar', 'com.android.tools.r8.D8',
         '--min-api', '31', '--lib', android, '--output', BUILD, jar)
     unsigned = BUILD / 'unsigned.apk'
-    run(tools / 'aapt2', 'link', '-o', unsigned, '--manifest', HERE / 'AndroidManifest.xml', '-I', android)
+    resources = BUILD / 'resources.zip'
+    resources.unlink(missing_ok=True)
+    run(tools / 'aapt2', 'compile', '--dir', HERE / 'res', '-o', resources)
+    run(tools / 'aapt2', 'link', '-o', unsigned, '--manifest', HERE / 'AndroidManifest.xml', '-I', android, resources)
     with zipfile.ZipFile(unsigned, 'a', zipfile.ZIP_DEFLATED) as archive:
         archive.write(BUILD / 'classes.dex', 'classes.dex')
     aligned = BUILD / 'aligned.apk'

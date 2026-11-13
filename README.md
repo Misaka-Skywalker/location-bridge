@@ -2,13 +2,17 @@
 
 [简体中文](README.zh-CN.md)
 
+<img src="docs/assets/icon.svg" width="96" height="96" alt="Location Bridge standby navigation display icon">
+
 Location Bridge is an experimental Android-to-iPad location bridge. An Android helper collects and checks location samples; a Termux-hosted Python worker uses `pymobiledevice3` to send latitude and longitude to an iPad through its developer location simulation service. The helper also displays location and motion information in a compact instrument-style interface.
 
 **Research and testing only. Do not rely on this project for safety-critical decisions.** Simulated location can affect other apps on the iPad. A clear command may fail if the connection is lost; verify that the iPad has returned to its normal location state after testing.
 
 Version 0.4.0 introduces an [experimental adaptive positioning core](docs/public/adaptive-core.md). Device checks confirmed native location, GNSS diagnostics and authenticated Termux snapshots; moving end-to-end validation is still pending.
 
-Version 0.4.1 adds [helper-to-Termux launch controls](docs/public/app-launch.md); this path has not yet been validated on a device.
+Version 0.4.1 adds [helper-to-Termux launch controls](docs/public/app-launch.md); USB startup from the app has been confirmed on OPPO K12s, with location received on an iPad.
+
+Version 0.4.2 adds a vector launcher icon inspired by a standby navigation display, without text. It includes a monochrome layer for themed icons.
 
 ## Status and limits
 

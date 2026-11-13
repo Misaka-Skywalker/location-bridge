@@ -2,13 +2,17 @@
 
 [English](README.md)
 
+<img src="docs/assets/icon.svg" width="96" height="96" alt="Location Bridge 备用导航显示器风格图标">
+
 Location Bridge 是一个实验性的 Android 到 iPad 定位桥。Android 助手采集并检查定位样本；Termux 中的 Python 进程通过 `pymobiledevice3` 和 iPad 开发者位置模拟服务发送经纬度。助手还以仪表风格界面显示定位和运动信息。
 
 **仅供研究和测试，不可用于安全关键决策。** 模拟位置会影响 iPad 上的其他应用。断开连接后清除命令可能无法送达；测试结束后请确认 iPad 已恢复正常位置状态。
 
 0.4.0 加入[实验性自适应定位内核](docs/public/adaptive-core.zh-CN.md)；已完成本机定位、GNSS 诊断与 Termux 认证快照的设备检查；真实移动全链路仍待验证。
 
-0.4.1 增加[助手调用 Termux 启动控制](docs/public/app-launch.zh-CN.md)；此路径尚未完成设备实测。
+0.4.1 增加[助手调用 Termux 启动控制](docs/public/app-launch.zh-CN.md)；已在 OPPO K12s 上确认 App 内启动 USB 连接后，iPad 能收到位置。
+
+0.4.2 加入 不含文字的备用 ND 风格矢量应用图标，并提供主题图标使用的单色版本。
 
 ## 当前状态与限制
 
