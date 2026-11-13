@@ -70,6 +70,8 @@ adb shell pm disable-user --user 0 com.android.mtp
 adb shell pm enable --user 0 com.android.mtp
 ```
 
+Helper 0.3.1 was validated on an OPPO K12s running Android 16 on 2026-11-13. With that MTP host component disabled, USB startup changed the phone from device to host while preserving sink power. A 30-second simulated track completed with iPad Wi-Fi off. The worker ended with `stopped`, `last_error=null` and `clear_pending=false`. This validates one device configuration, not support for the diagnostic interface on other models.
+
 ## Data flow
 
 Android location providers → helper selection and optional bounded inertial estimate → authenticated local helper interface → Termux service/worker → pymobiledevice3 tunnel and DVT → iPad simulated latitude/longitude. USB and Wi-Fi are separate transport paths. Helper status and additional measurements do not imply that the iPad receives those measurements. BLE reception has a diagnostic path only.

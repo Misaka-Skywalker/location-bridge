@@ -70,6 +70,8 @@ adb shell pm disable-user --user 0 com.android.mtp
 adb shell pm enable --user 0 com.android.mtp
 ```
 
+2026-11-13 在 OPPO K12s（Android 16）上验证了助手 0.3.1：停用上述 MTP 主机组件后，USB 启动自动将手机从从设备切为主机，同时保持受电方向；iPad 关闭 Wi-Fi 时完成了 30 秒模拟轨迹。工作进程最终记录为 `stopped`、`last_error=null`、`clear_pending=false`。这是单台设备上的验证，不能推定其他机型也支持该诊断接口。
+
 ## 数据流
 
 Android 定位提供器 → 助手选源和可选的有时限惯性推算 → 经认证的本地助手接口 → Termux 服务／工作进程 → pymobiledevice3 隧道和 DVT → iPad 模拟经纬度。USB 和 Wi-Fi 是不同的传输通道。助手的状态和其他测量值不代表 iPad 已接收这些数据；BLE 接收目前仅用于诊断。
