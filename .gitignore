@@ -47,6 +47,7 @@ __pycache__/
 /scripts/lockdown_pair_relay.py
 /android/repo/*
 !/android/repo/bridge_service.py
+!/android/repo/bridge_usb.py
 !/android/repo/bridge_status.py
 !/android/repo/bridge_worker.py
 !/android/repo/bridge_fusion.py

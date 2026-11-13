@@ -254,7 +254,7 @@ def status():
         marker=read_json(session/'final.status.json') if not alive else None
         valid_marker=(isinstance(marker,dict) and marker.get('run_id')==info['run_id']
                       and marker.get('phase') in ('stopped','error')
-                      and marker.get('issue') in ('none','worker_error','clear_unconfirmed','bridge_error','usb_missing')
+                      and marker.get('issue') in ('none','worker_error','clear_unconfirmed','bridge_error','usb_missing','usb_role_failed','usb_permission')
                       and type(marker.get('clear_pending')) is bool
                       and (marker['phase'] != 'stopped' or (marker['clear_pending'] is False and marker['issue']=='none')))
         if alive: phase,issue='connecting','none'
@@ -503,9 +503,38 @@ async def supervise(args, info):
         bind = []; env = []
         if args.transport == 'usb':
             prepare_socket(sock)
-            code, out, _ = await bounded('termux-usb', '-l', timeout=15)
-            devices = json.loads(out)
-            if code or not isinstance(devices, list) or len(devices) != 1 or not isinstance(devices[0], str) or not re.fullmatch(r'/dev/bus/usb/\d+/\d+', devices[0]):
+            async def list_usb(timeout=15):
+                code, out, _ = await bounded('termux-usb', '-l', timeout=timeout)
+                try: devices = json.loads(out)
+                except (ValueError, UnicodeError): raise RuntimeError('无法读取 USB 设备列表。') from None
+                if code or not isinstance(devices, list): raise RuntimeError('无法读取 USB 设备列表。')
+                return devices
+            def stopped():
+                return (read_json(session / 'stop.json') or {}).get('run_id') == run_id
+            devices = await list_usb()
+            if not devices and status_key:
+                import bridge_usb
+                status_issue = 'usb_role'; status_wakeup.set()
+                set_state('正在检查 USB 控制权；请保持 iPad 连接。')
+                try:
+                    role = await bridge_usb.request(status_key, stop_requested=stopped)
+                except (OSError, ValueError, asyncio.TimeoutError):
+                    status_issue = 'usb_role_failed'
+                    raise RuntimeError('无法检查 USB 控制权；请打开定位助手并检查连接。') from None
+                if role['result'] != 'host' or role['data_role'] != 'host':
+                    status_issue = 'usb_permission' if role['result'] == 'permission_required' else 'usb_role_failed'
+                    if role['result'] == 'permission_required':
+                        raise RuntimeError('USB 自动纠正未授权；需由电脑一次性授予定位助手 DUMP 权限，或在 USB 设置中手动选择本机控制。')
+                    raise RuntimeError('无法切换 USB 控制权；请检查数据线、OTG 和系统 USB 设置。')
+                end = asyncio.get_running_loop().time() + 5
+                while not devices and asyncio.get_running_loop().time() < end:
+                    if stopped(): raise InterruptedError('已停止')
+                    remaining = end - asyncio.get_running_loop().time()
+                    try: devices = await list_usb(timeout=max(.01, remaining))
+                    except asyncio.TimeoutError: break
+                    if not devices: await asyncio.sleep(min(.2, max(0, end - asyncio.get_running_loop().time())))
+            if stopped(): raise InterruptedError('已停止')
+            if len(devices) != 1 or not isinstance(devices[0], str) or not re.fullmatch(r'/dev/bus/usb/\d+/\d+', devices[0]):
                 status_issue = 'usb_missing'
                 raise RuntimeError('未找到唯一 USB 设备；请连接 iPad，设置 USB 控制权为本机并打开 OTG。')
             # Remove only an old pidfile after confirming there is no live service socket.
@@ -610,7 +639,7 @@ async def supervise(args, info):
     except (OSError, ValueError, RuntimeError, asyncio.TimeoutError, InterruptedError) as exc:
         if not isinstance(exc, InterruptedError):
             final_phase = 'error'
-            if status_issue != 'usb_missing': status_issue = 'bridge_error'
+            if status_issue not in ('usb_missing','usb_role_failed','usb_permission'): status_issue = 'bridge_error'
         status_phase = 'stopping'; status_wakeup.set()
         set_state(str(exc))
     finally:
@@ -666,7 +695,7 @@ async def supervise(args, info):
             await asyncio.gather(broadcaster, return_exceptions=True)
         status_phase = final_phase
         final_pending = False if worker is None else final_state.get('clear_pending') is not False
-        status_issue = status_issue if status_issue in ('none','worker_error','clear_unconfirmed','bridge_error','usb_missing') else 'none'
+        status_issue = status_issue if status_issue in ('none','worker_error','clear_unconfirmed','bridge_error','usb_missing','usb_role_failed','usb_permission') else 'none'
         atomic_json(session / 'final.status.json', {'run_id':run_id,'phase':final_phase,
                     'issue':status_issue,'clear_pending':final_pending})
         await send_status()

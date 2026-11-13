@@ -44,6 +44,7 @@ class BroadcastLifecycleTests(unittest.IsolatedAsyncioTestCase):
         import types
         from unittest.mock import patch
         import bridge_service as service
+        import bridge_usb
         with tempfile.TemporaryDirectory() as root:
             directory=Path(root); session=directory/'run'; session.mkdir()
             (directory/'source-config.json').write_text(json.dumps({'package':'org.locationbridge.source','helper_key':'11'*32}))
@@ -55,12 +56,13 @@ class BroadcastLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     seen.append(json.loads(base64.b64decode(args[args.index('payload')+1])))
                 if args[:2]==('termux-usb','-l'): return 0,b'[]',b''
                 return 0,b'',b''
-            with patch.object(service,'TASK',directory),patch.object(service,'APP',directory),patch.object(service,'bounded',bounded):
+            with patch.object(service,'TASK',directory),patch.object(service,'APP',directory),patch.object(service,'bounded',bounded), \
+                 patch.object(bridge_usb,'request',side_effect=asyncio.TimeoutError):
                 await service.supervise(types.SimpleNamespace(mode='hybrid',transport='usb',duration=90),info)
             self.assertGreaterEqual(len(seen),2)
             self.assertEqual(seen[0]['phase'],'connecting')
             self.assertEqual(seen[-1]['phase'],'error')
-            self.assertEqual(seen[-1]['issue'],'usb_missing')
+            self.assertEqual(seen[-1]['issue'],'usb_role_failed')
             self.assertTrue(all(x['connected'] is not True for x in seen))
 
 class StatusCommandTests(unittest.TestCase):

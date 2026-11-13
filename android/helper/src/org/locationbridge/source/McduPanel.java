@@ -133,6 +133,9 @@ final class McduPanel extends LinearLayout {
         if(issue.equals("clear_unconfirmed")) detail=Language.tr("尚未确认模拟位置已清除，请在 Termux 中查看");
         else if(issue.equals("waiting_usb")) detail=Language.tr("请在手机弹窗中允许访问 USB 设备");
         else if(issue.equals("usb_missing")) detail=Language.tr("请检查数据线，并在手机上启用 OTG");
+        else if(issue.equals("usb_role")) detail=Language.tr("正在检查并纠正 USB 主机角色");
+        else if(issue.equals("usb_permission")) detail=Language.tr("USB 自动纠正需要一次性电脑授权");
+        else if(issue.equals("usb_role_failed")) detail=Language.tr("请在 USB 设置中将控制权切换到本机");
         else if(issue.equals("waiting_helper")) detail=Language.tr("正在启动定位助手");
         else if(issue.equals("worker_stale")) detail=Language.tr("Termux 暂无响应，连接状态待确认");
         else if(phase.equals("connected")){

@@ -38,6 +38,9 @@ final class LanguageCatalog {
         EN.put("尚未确认模拟位置已清除，请在 Termux 中查看", "Mock location clearance unconfirmed; check Termux");
         EN.put("请在手机弹窗中允许访问 USB 设备", "Allow USB access in the phone prompt");
         EN.put("请检查数据线，并在手机上启用 OTG", "Check the cable and enable OTG");
+        EN.put("正在检查并纠正 USB 主机角色", "Checking and correcting USB host role");
+        EN.put("USB 自动纠正需要一次性电脑授权", "USB auto-correction needs one-time computer authorization");
+        EN.put("请在 USB 设置中将控制权切换到本机", "In USB settings, select This device as controller");
         EN.put("正在启动定位助手", "Starting location helper");
         EN.put("Termux 暂无响应，连接状态待确认", "Termux is not responding; status unconfirmed");
         EN.put("已连接，等待定位数据", "Connected; waiting for location");

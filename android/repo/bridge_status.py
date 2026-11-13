@@ -53,6 +53,7 @@ def brief(status):
             'stopping':'正在停止','stopped':'已停止','error':'连接异常','unknown':'状态未知'}
     sources={'gps':'GPS','network':'网络','fused':'系统融合','test':'测试轨迹','inertial':'惯性推算','unknown':'未知'}
     issues={'waiting_usb':'等待 USB 授权','usb_missing':'未找到 iPad USB 设备','waiting_helper':'等待定位助手',
+            'usb_role':'正在检查 USB 主机角色','usb_permission':'USB 自动纠正尚未授权','usb_role_failed':'USB 主机角色未就绪',
             'source_unavailable':'位置不可用','worker_error':'工作进程异常','clear_unconfirmed':'清除状态未确认',
             'bridge_error':'桥接异常','worker_stale':'工作进程状态过期'}
     phase=phases.get(status['phase'],'状态未知')

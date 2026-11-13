@@ -12,7 +12,7 @@
 python3 android/helper/build.py --sdk /path/to/android-sdk --build-tools 36.0.0
 ```
 
-也可设置 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`；`JAVA_HOME` 用于选择 JDK。输出为 `android/apks/location-bridge-source-0.3.0.apk`。构建会创建本地签名密钥；请安全保存以便后续更新，切勿提交或分享。CI 中无需可安装签名 APK 时可使用 `--unsigned`。源码发布不包含 SDK、密钥和 APK。
+也可设置 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`；`JAVA_HOME` 用于选择 JDK。输出为 `android/apks/location-bridge-source-0.3.1.apk`。构建会创建本地签名密钥；请安全保存以便后续更新，切勿提交或分享。CI 中无需可安装签名 APK 时可使用 `--unsigned`。源码发布不包含 SDK、密钥和 APK。
 
 ## 准备运行环境
 
@@ -39,6 +39,24 @@ python -c 'import json, pathlib; p = pathlib.Path.home() / "location-bridge" / "
 ```
 
 请保密此文件，不要提交到仓库。然后运行 `install-service.sh`，使用 `configure-source.sh` 配对助手，并单独完成 iPad 信任和远程配对。本次发布尚未完全自动化配对。
+
+### 可选：USB 主机角色自动纠正
+
+USB-C 连接时，Android 可能被协商为从设备。USB 启动流程在设备列表为空时，会通过已配对的助手检查真实端口角色，并在支持的端口上尝试切换为主机。它先保留供电方向，必要时才尝试端口支持的另一供电方向；确认真实主机状态后，还必须等待 USB 设备枚举，才继续连接。普通 USB 访问弹窗仍需允许。
+
+此功能依赖系统 USB 诊断接口，兼容性受厂商实现限制，尚不能保证每台设备都支持。它不需要 root 或运行时局域网，但需用户同意后，由可信电脑通过 ADB 一次性授予助手 `DUMP` 权限：
+
+```sh
+adb shell pm grant org.locationbridge.source android.permission.DUMP
+```
+
+`DUMP` 允许读取广泛的系统诊断信息，并非仅限于 USB。助手仅执行固定的 USB 查询和角色切换命令，不保存或传出完整诊断内容；权限只授予助手，不授予 Termux。卸载助手或执行以下命令可以撤销：
+
+```sh
+adb shell pm revoke org.locationbridge.source android.permission.DUMP
+```
+
+不授予权限时，已经处于主机模式的 USB 连接仍可使用；否则请在系统 USB 设置中将控制权切换为“本机”，并按机型要求开启 OTG。没有数据线、多个设备、无法解析的端口状态、模拟端口或切换失败都不能视为已连接。不要在连接电脑时运行纠正测试，因为角色切换可能中断 USB 调试。底层接口依据 [AOSP UsbService](https://android.googlesource.com/platform/frameworks/base/+/HEAD/services/usb/java/com/android/server/usb/UsbService.java)，并非稳定的公开 Android API。
 
 ## 数据流
 

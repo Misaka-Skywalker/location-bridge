@@ -14,6 +14,10 @@ public final class BridgeStatusAuthTest {
   check(BridgeStatusAuth.verify(key,payload,sig),"correct HMAC");
   check(!BridgeStatusAuth.verify("100102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",payload,sig),"wrong key");
   Map<String,Object> m=report(); check(BridgeStatusAuth.validReport(m),"valid schema");
+  for(String issue:new String[]{"usb_role","usb_permission","usb_role_failed"}) {
+   m.put("issue",issue); check(BridgeStatusAuth.validReport(m),"USB role status accepted");
+  }
+  m.put("issue","none");
   m.put("extra",1); check(!BridgeStatusAuth.validReport(m),"extra rejected"); m.remove("extra");
   m.put("protocol",true); check(!BridgeStatusAuth.validReport(m),"bool is not integer"); m.put("protocol",1);
   check(BridgeStatusAuth.acceptTime(100000,1000000,100001,1000001,99999,99999),"fresh timestamps");

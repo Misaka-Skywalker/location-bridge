@@ -12,7 +12,7 @@ The helper supports Android API 31 or newer. Install a JDK 17 or newer, Android 
 python3 android/helper/build.py --sdk /path/to/android-sdk --build-tools 36.0.0
 ```
 
-Alternatively set `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `JAVA_HOME` selects the JDK. The output is `android/apks/location-bridge-source-0.3.0.apk`. The build creates a local signing key; retain it securely for upgrades and never commit or share it. Use `--unsigned` for CI builds that do not need an installable signed APK. SDKs, keys and APKs are not shipped in this source release.
+Alternatively set `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `JAVA_HOME` selects the JDK. The output is `android/apks/location-bridge-source-0.3.1.apk`. The build creates a local signing key; retain it securely for upgrades and never commit or share it. Use `--unsigned` for CI builds that do not need an installable signed APK. SDKs, keys and APKs are not shipped in this source release.
 
 ## Runtime preparation
 
@@ -39,6 +39,24 @@ python -c 'import json, pathlib; p = pathlib.Path.home() / "location-bridge" / "
 ```
 
 Keep this file private and do not commit it. Then run `install-service.sh`, pair the helper with `configure-source.sh`, and complete iPad trust and remote pairing separately. Pairing is not fully automated by this release.
+
+### Optional USB host role correction
+
+USB-C negotiation can leave Android in the device role. When USB startup finds an empty device list, it asks the paired helper to inspect the real port and request the host role where supported. The helper preserves the power direction first, trying the other supported direction only if necessary. Startup requires both a confirmed host role and subsequent USB device enumeration before connecting. The normal USB access prompt still requires permission.
+
+This feature uses a system USB diagnostic interface whose availability depends on the vendor; support is not guaranteed on every device. It requires neither root nor a runtime LAN, but needs a one-time ADB grant from a trusted computer after the user consents:
+
+```sh
+adb shell pm grant org.locationbridge.source android.permission.DUMP
+```
+
+`DUMP` permits access to broad system diagnostic information, not just USB. The helper executes fixed USB queries and role changes only, without storing or transmitting the complete dump. The grant applies to the helper, not Termux. Uninstall the helper or revoke it with:
+
+```sh
+adb shell pm revoke org.locationbridge.source android.permission.DUMP
+```
+
+Without this grant, USB connections already in host mode continue to work. Otherwise, select This device as controller in system USB settings and enable OTG if required by the device. Missing cables, multiple devices, unrecognized state, simulated ports and failed switches never count as connected. Do not run correction tests while attached to a computer: switching roles may interrupt USB debugging. The underlying interface comes from [AOSP UsbService](https://android.googlesource.com/platform/frameworks/base/+/HEAD/services/usb/java/com/android/server/usb/UsbService.java), not a stable public Android API.
 
 ## Data flow
 

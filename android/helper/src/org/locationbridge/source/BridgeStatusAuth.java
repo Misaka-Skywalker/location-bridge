@@ -37,7 +37,7 @@ final class BridgeStatusAuth {
                 || !choice(m.get("worker_state"),"waiting","running","stale","reconnecting","stopped","error","unknown")
                 || !choice(m.get("source"),"gps","network","fused","test","inertial","unknown")
                 || !choice(m.get("accuracy_kind"),"reported","model_estimate","unknown")
-                || !choice(m.get("issue"),"none","waiting_usb","usb_missing","waiting_helper","source_unavailable","worker_error","clear_unconfirmed","bridge_error","worker_stale")
+                || !choice(m.get("issue"),"none","waiting_usb","usb_missing","usb_role","usb_permission","usb_role_failed","waiting_helper","source_unavailable","worker_error","clear_unconfirmed","bridge_error","worker_stale")
                 || !number(m.get("accuracy_m"),1e9) || !number(m.get("fix_age_ms"),1e12)
                 || m.get("last_sequence")!=null && !integer(m.get("last_sequence"),0)
                 || m.get("clear_pending")!=null && !(m.get("clear_pending") instanceof Boolean)
