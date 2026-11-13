@@ -17,6 +17,7 @@ final class McduPanel extends LinearLayout {
     private final TextView[][] labels=new TextView[6][2], values=new TextView[6][2];
     private String page="POS";
     private JSONObject snapshot;
+    private JSONObject commandStatus;
     private boolean permission, enabled, running;
     private final TextView runLabel, inertialLabel;
     private final Button runKey, inertialKey;
@@ -32,7 +33,7 @@ final class McduPanel extends LinearLayout {
         display.setPadding(dp(12),dp(12),dp(12),dp(8));display.setBackground(shape(SCREEN,0xff38444d,4));addView(display);
         title=text(Language.tr("位置总览  1/5"),18,WHITE);display.addView(title);
         bridgeHeading=text(Language.tr("iPad：尚未收到状态"),14,AMBER);bridgeHeading.setPadding(0,dp(8),0,0);display.addView(bridgeHeading);
-        bridgeDetails=text(Language.tr("前往“设置 → 打开 Termux”启动连接"),11,MUTED);bridgeDetails.setMinHeight(dp(28));display.addView(bridgeDetails);
+        bridgeDetails=text(Language.tr("点击“连接 iPad”启动 USB 连接"),11,MUTED);bridgeDetails.setMinHeight(dp(28));display.addView(bridgeDetails);
         annunciator=text(Language.tr("● 手机定位已停止"),12,AMBER);annunciator.setPadding(0,dp(4),0,dp(4));display.addView(annunciator);
         for(int row=0;row<6;row++) {
             LinearLayout line=new LinearLayout(context);line.setOrientation(HORIZONTAL);line.setGravity(Gravity.CENTER_VERTICAL);
@@ -49,6 +50,8 @@ final class McduPanel extends LinearLayout {
         scratch=text(Language.tr("点击“启动定位”开始"),12,AMBER);scratch.setMinHeight(dp(40));scratch.setPadding(0,dp(8),0,dp(8));display.addView(scratch);
         LinearLayout operations=new LinearLayout(context);operations.setOrientation(VERTICAL);
         operations.setPadding(0,dp(8),0,0);addView(operations);
+        ActionRow connection=new ActionRow(()->actions.run("CONNECT"),()->actions.run("DISCONNECT"));
+        connection.bind(Language.tr("连接 iPad"),Language.tr("断开连接"),GREEN,AMBER);operations.addView(connection);
         ActionRow primary=new ActionRow(()->actions.run(running?"STOP":"RUN"),()->actions.run("DR"));
         operations.addView(primary);runLabel=primary.left;inertialLabel=primary.right;runKey=primary.leftKey;inertialKey=primary.rightKey;
         ActionRow secondary=new ActionRow(()->actions.run("BLE"),()->actions.run("SETTINGS"));
@@ -62,7 +65,7 @@ final class McduPanel extends LinearLayout {
             LayoutParams params=new LayoutParams(0,dp(52),1);params.setMargins(dp(2),0,dp(2),0);pages.addView(button,params);
         }
         pairing=text(Language.tr("尚未配对"),11,MUTED);pairing.setPadding(dp(4),dp(16),dp(4),dp(8));addView(pairing);
-        TextView legend=text(Language.tr("此处控制手机定位；连接 iPad 请打开 Termux"),11,MUTED);
+        TextView legend=text(Language.tr("连接 iPad 默认使用 USB；Wi-Fi 连接请前往设置"),11,MUTED);
         legend.setPadding(dp(4),0,dp(4),0);addView(legend);
     }
     private final class ActionRow extends LinearLayout {
@@ -102,6 +105,7 @@ final class McduPanel extends LinearLayout {
     String currentPage(){ return page; }
     void selectPage(String value){ for(String candidate:PAGES) if(candidate.equals(value)) { page=value; break; } }
     void pairing(String text){pairing.setText(text);}
+    void commandStatus(JSONObject value){commandStatus=value;}
     void fault(String text){annunciator.setText(Language.tr("● 状态读取失败"));annunciator.setTextColor(AMBER);scratch.setText(text);}
     void update(JSONObject data,boolean permission,boolean enabled,JSONObject bridge){this.snapshot=data;this.permission=permission;this.enabled=enabled;render();renderBridge(bridge);}
     private void renderBridge(JSONObject report){
@@ -109,10 +113,20 @@ final class McduPanel extends LinearLayout {
         String via=transport.equals("usb")?" · USB":transport.equals("wifi")?" · Wi-Fi":"";
         boolean fresh=report!=null&&report.optBoolean("fresh");
         bridgeHeading.setTextColor(AMBER);
+        String commandState=str(commandStatus,"state","none");
+        long issued=commandStatus==null?0:commandStatus.optLong("issued_elapsed_ms");
+        boolean commandNewer=issued>0 && issued<=android.os.SystemClock.elapsedRealtime()
+                && (!fresh || report.optLong("sent_elapsed_ms")<issued);
+        if(commandNewer && !commandState.equals("none")) {
+            boolean stopping="stop".equals(str(commandStatus,"operation",""));
+            bridgeHeading.setText(Language.tr(commandState.equals("failed")?"iPad：命令执行失败":stopping?"iPad：已发送断开请求":"iPad：等待连接状态"));
+            bridgeDetails.setText(Language.tr("terminal_open_failed".equals(str(commandStatus,"error",""))?"请点击 Termux 通知打开终端，让命令继续执行":commandState.equals("failed")?"请检查 Termux 应用调用设置和桥接脚本":commandState.equals("unconfirmed")?"尚未收到状态，请在 Termux 中检查启动结果":commandState.equals("completed")?"命令已结束，连接状态尚未确认":"正在调用 Termux，请处理可能出现的授权提示"));
+            return;
+        }
         if(!fresh){
             boolean history=report!=null&&!report.isNull("report_age_ms")&&report.has("report_age_ms");
             bridgeHeading.setText(history?(phase.equals("stopped")?Language.tr("iPad：上次连接已结束"):Language.tr("iPad：连接状态未知"))+via:Language.tr("iPad：尚未收到状态"));
-            bridgeDetails.setText(history?Language.tr("连接状态未更新，请在 Termux 中查看"):Language.tr("前往“设置 → 打开 Termux”启动连接"));
+            bridgeDetails.setText(history?Language.tr("连接状态未更新，请在 Termux 中查看"):Language.tr("点击“连接 iPad”启动 USB 连接"));
             return;
         }
         String state;
@@ -148,7 +162,7 @@ final class McduPanel extends LinearLayout {
                 if(!report.isNull("accuracy_m")) detail+=" · "+(src.equals("inertial")?Language.tr("模型误差 "):Language.tr("精度 "))+number(report,"accuracy_m","%.1f m");
             }
         }else if(phase.equals("stopped")||phase.equals("error"))
-            detail=report.optBoolean("clear_pending")?Language.tr("尚未确认模拟位置已清除，请在 Termux 中查看"):Language.tr("打开 Termux 查看连接详情");
+            detail=report.optBoolean("clear_pending")?Language.tr("尚未确认模拟位置已清除，请在 Termux 中查看"):Language.tr("连接已结束；可点击连接按钮重新启动");
         else if(phase.equals("stopping")) detail=Language.tr("正在断开连接并清除模拟位置");
         else detail=Language.tr("正在等待 Termux 更新连接状态");
         bridgeDetails.setText(detail);
@@ -227,7 +241,7 @@ final class McduPanel extends LinearLayout {
             row(2,Language.tr("网络定位"),provider(providers,"network"),Language.tr("位置权限"),permission?Language.tr("精确位置"):Language.tr("需要授权"));
             row(3,Language.tr("丢弃定位次数"),selection==null?"---":String.valueOf(selection.optLong("rejected_count")),Language.tr("切换来源次数"),selection==null?"---":String.valueOf(selection.optLong("switch_count")));
             row(4,Language.tr("惯性推算"),enabled?Language.tr("已启用"):Language.tr("已停用"),Language.tr("工作模式"),Language.tr("手机定位"));
-            row(5,Language.tr("连接 iPad"),Language.tr("设置 → Termux"),Language.tr("发送至 iPad"),Language.tr("仅经纬度"));
+            row(5,Language.tr("连接 iPad"),Language.tr("点击连接按钮"),Language.tr("发送至 iPad"),Language.tr("仅经纬度"));
         }else{
             JSONObject rx=obj(snapshot,"gnss_diagnostics"),status=obj(rx,"status"),raw=obj(rx,"measurements");
             title.setText(Language.tr("接收机能力  5/5"));

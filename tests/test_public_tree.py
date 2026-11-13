@@ -20,6 +20,15 @@ class PublicTreeTests(unittest.TestCase):
     def test_normal_source_and_synthetic_locations_are_allowed(self):
         self.assertEqual(public_tree.problems('android/repo/example.py', b'LAT = 30.0\n'), [])
 
+    def test_termux_app_home_is_not_a_personal_home_directory(self):
+        app_home = b'/data/data/com.termux/files/' + b'home/location-bridge/bridge-launch.sh'
+        self.assertEqual(public_tree.problems('Launcher.java', app_home), [])
+        for root in (b'/home/', b'/Users/'):
+            self.assertEqual(public_tree.problems('config.py', root + b'alice/project/'),
+                             ['personal absolute path'])
+        self.assertEqual(public_tree.problems('config.py', app_home + b' /home/' + b'alice/project/'),
+                         ['personal absolute path'])
+
 
 if __name__ == '__main__':
     unittest.main()

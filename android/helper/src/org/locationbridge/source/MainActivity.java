@@ -20,6 +20,8 @@ public final class MainActivity extends Activity {
     private long bridgeDeadline;
     private String bridgeAuth;
     private String candidateToken;
+    private TermuxCommand pendingTermuxCommand;
+    private static final int TERMUX_PERMISSION_REQUEST=24;
     static final String PREFS = "location_bridge_pairing";
     static final String TOKEN = "token";
     private final Runnable refresh = new Runnable() {
@@ -124,8 +126,8 @@ public final class MainActivity extends Activity {
             case "PAIR": confirmPairing();break;
             case "LOC": startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));break;
             case "SETTINGS":
-                String[] labels={Language.tr("定位和通知权限"),Language.tr("与 Termux 配对"),Language.tr("系统定位设置"),Language.tr("GNSS 连续跟踪"),Language.tr("打开 Termux（连接 iPad）"),"Language / 语言"};
-                String[] actions={"AUTH","PAIR","LOC","TRACK","TERM","LANG"};
+                String[] labels={Language.tr("定位和通知权限"),Language.tr("与 Termux 配对"),Language.tr("系统定位设置"),Language.tr("GNSS 连续跟踪"),Language.tr("启动 iPad 连接（USB）"),Language.tr("启动 iPad 连接（Wi-Fi）"),Language.tr("Termux 启动设置"),"Language / 语言"};
+                String[] actions={"AUTH","PAIR","LOC","TRACK","TERM","CONNECT_WIFI","TERM_HELP","LANG"};
                 new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
                         .setTitle(Language.tr("设置"))
                         .setItems(labels,(dialog,index)->runPanelAction(actions[index]))
@@ -155,10 +157,11 @@ public final class MainActivity extends Activity {
                         }).setNegativeButton(Language.tr("返回"),null).show();
                 break;
             case "BLE": startActivity(new Intent(this,BleReceiverActivity.class));break;
-            case "TERM":
-                Intent termux=getPackageManager().getLaunchIntentForPackage("com.termux");
-                if(termux!=null) startActivity(termux);
-                break;
+            case "TERM": case "CONNECT": requestBridgeCommand(TermuxCommand.USB);break;
+            case "CONNECT_WIFI": requestBridgeCommand(TermuxCommand.WIFI);break;
+            case "DISCONNECT": requestBridgeCommand(TermuxCommand.STOP);break;
+            case "BRIDGE_STATUS": requestBridgeCommand(TermuxCommand.STATUS);break;
+            case "TERM_HELP": showTermuxHelp();break;
             case "DR":
                 boolean enabled=!getSharedPreferences("native_inertial",MODE_PRIVATE).getBoolean("enabled",true);
                 LocationService service=LocationService.instance;
@@ -167,6 +170,47 @@ public final class MainActivity extends Activity {
                 Toast.makeText(this,enabled?Language.tr("已启用短时惯性推算"):Language.tr("已停用惯性推算"),Toast.LENGTH_SHORT).show();
                 updateStatus();break;
         }
+    }
+    private void openTermux() {
+        Intent terminal=getPackageManager().getLaunchIntentForPackage("com.termux");
+        if(terminal!=null) startActivity(terminal);
+        else Toast.makeText(this,Language.tr("请先安装 Termux"),Toast.LENGTH_LONG).show();
+    }
+    private void showTermuxHelp() {
+        new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
+                .setTitle(Language.tr("Termux 启动设置"))
+                .setMessage(Language.tr("首次使用需允许定位助手在 Termux 中运行命令，并在 Termux 中开启应用调用。此权限允许访问 Termux 环境和文件；本助手只调用固定的定位桥脚本。完成一次性设置后，可直接点击“连接 iPad”，无需桌面小组件。"))
+                .setPositiveButton(Language.tr("检查启动接口"),(d,w)->requestBridgeCommand(TermuxCommand.STATUS))
+                .setNeutralButton(Language.tr("仅打开 Termux"),(d,w)->openTermux())
+                .setNegativeButton(Language.tr("返回"),null).show();
+    }
+    private void requestBridgeCommand(TermuxCommand command) {
+        if(getPackageManager().getLaunchIntentForPackage("com.termux")==null) {
+            Toast.makeText(this,Language.tr("请先安装 Termux"),Toast.LENGTH_LONG).show();return;
+        }
+        if(command.isStart()) {
+            if(!AuthProtocol.isHex64(getSharedPreferences(PREFS,MODE_PRIVATE).getString(TOKEN,null))) {
+                Toast.makeText(this,Language.tr("请先前往“设置 → 与 Termux 配对”"),Toast.LENGTH_LONG).show();return;
+            }
+            JSONObject state=BridgeStatusReceiver.snapshot(this);
+            String phase=state.optString("phase");
+            if(state.optBoolean("fresh") && (phase.equals("connecting") || phase.equals("connected") || phase.equals("reconnecting") || phase.equals("stopping"))) {
+                Toast.makeText(this,Language.tr("连接已在运行，请先断开再切换"),Toast.LENGTH_LONG).show();return;
+            }
+        }
+        if(checkSelfPermission(TermuxBridge.PERMISSION)!=PackageManager.PERMISSION_GRANTED) {
+            new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
+                    .setTitle(Language.tr("允许调用 Termux"))
+                    .setMessage(Language.tr("连接按钮需要“在 Termux 中运行命令”权限。该权限允许定位助手访问 Termux 环境和文件；本助手仅运行固定的桥接启动、停止和状态脚本。"))
+                    .setPositiveButton(Language.tr("继续授权"),(d,w)->{
+                        pendingTermuxCommand=command;
+                        requestPermissions(new String[]{TermuxBridge.PERMISSION},TERMUX_PERMISSION_REQUEST);
+                    }).setNegativeButton(Language.tr("取消"),null).show();
+            return;
+        }
+        String error=TermuxBridge.launch(this,command);
+        if(error!=null) Toast.makeText(this,Language.tr(error.equals("busy")?"启动请求已发送，请稍候":error.equals("permission_required")?"请授予 Termux 命令权限":error.equals("missing_termux")?"请先安装 Termux":"无法调用 Termux，请检查启动设置"),Toast.LENGTH_LONG).show();
+        updateStatus();
     }
     private boolean fineGranted() { return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED; }
     private void requestPermissionsIfNeeded() {
@@ -180,6 +224,13 @@ public final class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
+        if(requestCode==TERMUX_PERMISSION_REQUEST) {
+            TermuxCommand command=pendingTermuxCommand;pendingTermuxCommand=null;
+            if(command!=null && checkSelfPermission(TermuxBridge.PERMISSION)==PackageManager.PERMISSION_GRANTED)
+                requestBridgeCommand(command);
+            else Toast.makeText(this,Language.tr(checkSelfPermission(TermuxBridge.PERMISSION)==PackageManager.PERMISSION_GRANTED?"授权完成，请再次点击连接按钮":"未获得权限；可在系统应用权限中允许 Termux 命令"),Toast.LENGTH_LONG).show();
+            return;
+        }
         // After an external launch requiring permission, stay on this page for a clear user action.
         bridgeStart = false;
         bridgeAuth = null;
@@ -225,6 +276,7 @@ public final class MainActivity extends Activity {
         LocationService service=LocationService.instance;
         boolean enabled=getSharedPreferences("native_inertial",MODE_PRIVATE).getBoolean("enabled",true);
         JSONObject bridge=BridgeStatusReceiver.snapshot(this);
+        panel.commandStatus(TermuxBridge.snapshot(this));
         try {panel.update(service==null?null:service.snapshot(),fineGranted(),enabled,bridge);}
         catch(Exception error){panel.update(null,fineGranted(),enabled,bridge);panel.fault(Language.tr("定位状态读取失败，请停止后重新启动"));}
     }

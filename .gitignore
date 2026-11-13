@@ -59,6 +59,7 @@ __pycache__/
 !/android/repo/install-runtime.sh
 !/android/repo/migrate-target.py
 !/android/repo/configure-source.sh
+!/android/repo/configure-app-launch.py
 !/android/repo/wheels/
 /android/repo/wheels/*
 !/android/repo/wheels/requirements.txt

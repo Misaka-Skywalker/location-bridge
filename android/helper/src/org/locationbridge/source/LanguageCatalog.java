@@ -7,6 +7,38 @@ import java.util.Map;
 final class LanguageCatalog {
     private static final Map<String,String> EN = new HashMap<>();
     static {
+        EN.put("请点击 Termux 通知打开终端，让命令继续执行", "Open the Termux notification to let the command continue");
+        EN.put("点击“连接 iPad”启动 USB 连接", "Tap Connect iPad to start USB");
+        EN.put("连接 iPad 默认使用 USB；Wi-Fi 连接请前往设置", "Connect iPad uses USB; Wi-Fi is in Settings");
+        EN.put("点击连接按钮", "Tap Connect iPad");
+        EN.put("连接已结束；可点击连接按钮重新启动", "Connection ended; tap Connect iPad to restart");
+        EN.put("连接 iPad", "Connect iPad");
+        EN.put("断开连接", "Disconnect");
+        EN.put("请先安装 Termux", "Install Termux first");
+        EN.put("启动 iPad 连接（USB）", "Connect iPad (USB)");
+        EN.put("启动 iPad 连接（Wi-Fi）", "Connect iPad (Wi-Fi)");
+        EN.put("Termux 启动设置", "Termux launch setup");
+        EN.put("首次使用需允许定位助手在 Termux 中运行命令，并在 Termux 中开启应用调用。此权限允许访问 Termux 环境和文件；本助手只调用固定的定位桥脚本。完成一次性设置后，可直接点击“连接 iPad”，无需桌面小组件。", "One-time setup: grant this helper permission to run Termux commands and enable external app calls in Termux. This permission allows access to the Termux environment and files; this helper runs only fixed bridge scripts. Then tap Connect iPad without a home-screen widget.");
+        EN.put("检查启动接口", "Check launcher");
+        EN.put("仅打开 Termux", "Open terminal only");
+        EN.put("连接已在运行，请先断开再切换", "Connection is running; disconnect before switching");
+        EN.put("允许调用 Termux", "Allow Termux commands");
+        EN.put("连接按钮需要“在 Termux 中运行命令”权限。该权限允许定位助手访问 Termux 环境和文件；本助手仅运行固定的桥接启动、停止和状态脚本。", "Connect requires Run commands in Termux permission. This allows the helper to access the Termux environment and files. The helper only runs fixed bridge start, stop and status scripts.");
+        EN.put("继续授权", "Continue");
+        EN.put("取消", "Cancel");
+        EN.put("启动请求已发送，请稍候", "Request sent; please wait");
+        EN.put("请授予 Termux 命令权限", "Grant Termux command permission");
+        EN.put("无法调用 Termux，请检查启动设置", "Cannot call Termux; check launch setup");
+        EN.put("未获得权限；可在系统应用权限中允许 Termux 命令", "Permission not granted; allow Termux commands in app permissions");
+        EN.put("授权完成，请再次点击连接按钮", "Permission granted; tap Connect again");
+        EN.put("iPad：命令执行失败", "iPad: Command failed");
+        EN.put("iPad：已发送断开请求", "iPad: Disconnect requested");
+        EN.put("iPad：等待连接状态", "iPad: Awaiting connection status");
+        EN.put("请检查 Termux 应用调用设置和桥接脚本", "Check Termux external app setting and bridge installation");
+        EN.put("尚未收到状态，请在 Termux 中检查启动结果", "No status received; check the launch result in Termux");
+        EN.put("命令已结束，连接状态尚未确认", "Command ended; connection status is unconfirmed");
+        EN.put("正在调用 Termux，请处理可能出现的授权提示", "Calling Termux; respond to any permission prompts");
+
         EN.put("接收机", "RX");
         EN.put("接收机能力  5/5", "RECEIVER  5/5");
         EN.put("未知", "Unknown");

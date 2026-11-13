@@ -8,6 +8,8 @@ Location Bridge 是一个实验性的 Android 到 iPad 定位桥。Android 助�
 
 0.4.0 加入[实验性自适应定位内核](docs/public/adaptive-core.zh-CN.md)；已完成本机定位、GNSS 诊断与 Termux 认证快照的设备检查；真实移动全链路仍待验证。
 
+0.4.1 增加[助手调用 Termux 启动控制](docs/public/app-launch.zh-CN.md)；此路径尚未完成设备实测。
+
 ## 当前状态与限制
 
 - 已观察到 Wi-Fi 和 USB 下的固定点及模拟轨迹；测试过的 USB 通道不依赖局域网。真实移动场景下 Android 到 iPad 的持续全链路尚未验证，长时间运行和锁屏场景也未验证。

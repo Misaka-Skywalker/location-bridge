@@ -16,7 +16,7 @@ RULES = {
     'private key': re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
     'GitHub credential': re.compile(r'(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}'),
     'AWS credential': re.compile(r'AKIA[A-Z0-9]{16}'),
-    'personal absolute path': re.compile(r'/(?:Users|home)/[A-Za-z0-9_.-]+/'),
+    'personal absolute path': re.compile(r'/Users/[A-Za-z0-9_.-]+/|(?<!/data/data/com\.termux/files)/home/[A-Za-z0-9_.-]+/'),
     'literal pairing secret': re.compile(r'''["'](?:helper_key|pairing_token)["']\s*:\s*["'][a-fA-F0-9]{64}["']'''),
 }
 

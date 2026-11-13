@@ -8,10 +8,10 @@ if ! flock -n 9; then
   printf '请先停止定位桥，再更新。\n'
   exit 1
 fi
-for name in bridge_service.py bridge_usb.py bridge_status.py bridge_worker.py bridge_fusion.py bridge_external.py external_location.py bridge-usb-daemon.sh bridge-launch.sh; do
+for name in bridge_service.py bridge_usb.py bridge_status.py bridge_worker.py bridge_fusion.py bridge_external.py external_location.py bridge-usb-daemon.sh bridge-launch.sh configure-app-launch.py; do
   curl --fail --silent --show-error --noproxy '*' "http://127.0.0.1:18765/$name" -o "$task_dir/$name.next"
 done
-for name in bridge_service.py bridge_usb.py bridge_status.py bridge_worker.py bridge_fusion.py bridge_external.py external_location.py bridge-usb-daemon.sh bridge-launch.sh; do
+for name in bridge_service.py bridge_usb.py bridge_status.py bridge_worker.py bridge_fusion.py bridge_external.py external_location.py bridge-usb-daemon.sh bridge-launch.sh configure-app-launch.py; do
   mv "$task_dir/$name.next" "$task_dir/$name"
 done
 chmod 700 "$task_dir/bridge-usb-daemon.sh" "$task_dir/bridge-launch.sh"
