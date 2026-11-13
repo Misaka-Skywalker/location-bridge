@@ -60,6 +60,8 @@ adb shell pm revoke org.locationbridge.source android.permission.DUMP
 
 不授予权限时，已经处于主机模式的 USB 连接仍可使用；否则请在系统 USB 设置中将控制权切换为“本机”，并按机型要求开启 OTG。没有数据线、多个设备、无法解析的端口状态、模拟端口或切换失败都不能视为已连接。不要在连接电脑时运行纠正测试，因为角色切换可能中断 USB 调试。底层接口依据 [AOSP UsbService](https://android.googlesource.com/platform/frameworks/base/+/HEAD/services/usb/java/com/android/server/usb/UsbService.java)，并非稳定的公开 Android API。
 
+主机角色就绪并不代表接口可用。手机的 USB 文件／照片传输可能占用同一设备；启动流程识别本轮日志中的明确占用错误后会停止并提示关闭传输，而不会只因服务套接字存在就继续重连。请退出相关传输会话后重试。助手不会自动强制停止或禁用系统应用。
+
 ## 数据流
 
 Android 定位提供器 → 助手选源和可选的有时限惯性推算 → 经认证的本地助手接口 → Termux 服务／工作进程 → pymobiledevice3 隧道和 DVT → iPad 模拟经纬度。USB 和 Wi-Fi 是不同的传输通道。助手的状态和其他测量值不代表 iPad 已接收这些数据；BLE 接收目前仅用于诊断。

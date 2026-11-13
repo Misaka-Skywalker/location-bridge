@@ -314,3 +314,58 @@ class FusionStartupTests(unittest.IsolatedAsyncioTestCase):
                 await service.supervise(args,info)
             self.assertEqual([call[0] for call in times], ['stop'])
             self.assertGreaterEqual(times[0][1], deadline-.005)
+
+class UsbLogTests(unittest.TestCase):
+    BUSY = 'Could not set configuration 4: LIBUSB_ERROR_BUSY\nCould not claim interface 1\n'
+    SUCCESS = 'Connected to v2.0 device 1\n'
+
+    def test_busy_requires_claim_and_busy_without_success(self):
+        self.assertTrue(service.usb_log_busy(self.BUSY))
+        self.assertFalse(service.usb_log_busy('LIBUSB_ERROR_BUSY\n'))
+        self.assertFalse(service.usb_log_busy(self.BUSY + self.SUCCESS))
+        self.assertFalse(service.usb_log_busy('Could not claim interface 1\n'))
+
+    def test_old_history_and_fallback_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'usbmuxd.log'; path.write_text(self.BUSY)
+            position = service.usb_log_position(path)
+            with path.open('a') as log: log.write(self.SUCCESS)
+            self.assertFalse(service.usb_log_busy(service.usb_current_log(path, position)))
+            with path.open('a') as log: log.write(self.BUSY)
+            self.assertFalse(service.usb_log_busy(service.usb_current_log(path, position)))
+
+    def test_rotation_truncation_and_bound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'usbmuxd.log'; path.write_text('history'*30)
+            position = service.usb_log_position(path)
+            path.write_text(self.BUSY + 'x'*200)
+            self.assertTrue(service.usb_log_busy(service.usb_current_log(path, position)))
+            path.unlink(); path.write_text(self.BUSY)
+            self.assertTrue(service.usb_log_busy(service.usb_current_log(path, position)))
+            path.write_text('z'*70000 + self.BUSY)
+            self.assertLessEqual(len(service.usb_current_log(path, position).encode()), 65536)
+
+    def test_new_claim_failure_stops_before_worker_launch(self):
+        import asyncio
+        import types
+        from unittest import mock
+        async def run():
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp); session = root/'run'; session.mkdir()
+                log = root/'usbmuxd.log'; log.write_text('older successful history\n')
+                info = {'run_id':'run-'+'a'*32,'session_dir':str(session),'mode':'hybrid','transport':'usb'}
+                proc = mock.Mock(returncode=None, wait=mock.AsyncMock())
+                async def bounded(*args, **kwargs):
+                    if args[:2] == ('termux-usb','-l'): return 0,b'["/dev/bus/usb/001/002"]',b''
+                    return 0,b'',b''
+                async def launch(*args, **kwargs):
+                    with log.open('a') as output: output.write(self.BUSY)
+                    return proc
+                with mock.patch.object(service,'TASK',root), mock.patch.object(service,'APP',root), \
+                     mock.patch.object(service,'bounded',bounded), mock.patch.object(service,'prepare_socket'), \
+                     mock.patch.object(Path,'is_socket',return_value=True), \
+                     mock.patch.object(asyncio,'create_subprocess_exec',side_effect=launch) as spawned:
+                    await service.supervise(types.SimpleNamespace(mode='hybrid',transport='usb',duration=90,udid='test'),info)
+                self.assertEqual(spawned.call_count,1)
+                self.assertEqual(json.loads((session/'final.status.json').read_text())['issue'], 'usb_busy')
+        asyncio.run(run())

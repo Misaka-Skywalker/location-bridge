@@ -165,6 +165,45 @@ def running():
         return False
 
 
+def usb_log_position(path):
+    """Mark the existing log so failures from an earlier run are ignored."""
+    try:
+        with path.open('rb') as log:
+            info = os.fstat(log.fileno())
+            log.seek(max(0, info.st_size - 64))
+            anchor = log.read(min(info.st_size, 64))
+            return (info.st_dev, info.st_ino, info.st_size, anchor)
+    except FileNotFoundError:
+        return None
+
+
+def usb_current_log(path, position, limit=65536):
+    """Read only bounded new bytes, including after rotation or truncation."""
+    try:
+        with path.open('rb') as log:
+            info = os.fstat(log.fileno())
+            start = 0
+            if position and (info.st_dev, info.st_ino) == position[:2] and info.st_size >= position[2]:
+                log.seek(max(0, position[2] - len(position[3])))
+                if log.read(len(position[3])) == position[3]:
+                    start = position[2]
+            log.seek(max(start, info.st_size - limit))
+            return log.read(limit).decode('utf-8', 'replace')
+    except FileNotFoundError:
+        return ''
+
+
+def usb_log_busy(text):
+    """A final claim failure with BUSY is actionable unless a connection succeeded."""
+    if 'Connected to v2.0 device' in text:
+        return False
+    busy = text.find('LIBUSB_ERROR_BUSY')
+    if busy < 0:
+        return False
+    return ('Could not claim interface' in text[busy:] or
+            'Cannot find device entry while removing USB device' in text[busy:])
+
+
 def usb_exited_with_error(returncode):
     return returncode is not None and returncode != 0
 
@@ -254,7 +293,7 @@ def status():
         marker=read_json(session/'final.status.json') if not alive else None
         valid_marker=(isinstance(marker,dict) and marker.get('run_id')==info['run_id']
                       and marker.get('phase') in ('stopped','error')
-                      and marker.get('issue') in ('none','worker_error','clear_unconfirmed','bridge_error','usb_missing','usb_role_failed','usb_permission')
+                      and marker.get('issue') in ('none','worker_error','clear_unconfirmed','bridge_error','usb_missing','usb_role_failed','usb_permission','usb_busy')
                       and type(marker.get('clear_pending')) is bool
                       and (marker['phase'] != 'stopped' or (marker['clear_pending'] is False and marker['issue']=='none')))
         if alive: phase,issue='connecting','none'
@@ -543,6 +582,8 @@ async def supervise(args, info):
             with contextlib.suppress(FileNotFoundError): pidfile.unlink()
             status_issue = 'waiting_usb'; status_wakeup.set()
             set_state('等待 USB 授权；如设备忙，请关闭文件或照片传输。')
+            usb_log = APP / 'usbmuxd.log'
+            usb_log_start = usb_log_position(usb_log)
             usb = await asyncio.create_subprocess_exec('termux-usb', '-r', '-E', '-e', str(TASK / 'bridge-usb-daemon.sh'), devices[0], stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
             for _ in range(600):
                 if (read_json(session / 'stop.json') or {}).get('run_id') == run_id: raise InterruptedError('已停止')
@@ -551,6 +592,15 @@ async def supervise(args, info):
                 if usb_exited_with_error(usb.returncode): raise RuntimeError('USB 授权或服务启动失败；如设备忙请关闭文件或照片传输。')
                 await asyncio.sleep(.1)
             else: raise RuntimeError('USB 服务等待超时，请检查授权与 USB 控制权。')
+            # Socket creation alone does not mean the device interface was claimed.
+            # Let configuration fallback complete before classifying a busy failure.
+            settle_end = asyncio.get_running_loop().time() + 1
+            while asyncio.get_running_loop().time() < settle_end:
+                if stopped(): raise InterruptedError('已停止')
+                await asyncio.sleep(min(.1, max(0, settle_end - asyncio.get_running_loop().time())))
+            if usb_log_busy(usb_current_log(usb_log, usb_log_start)):
+                status_issue = 'usb_busy'; status_wakeup.set()
+                raise RuntimeError('USB 接口被占用；请关闭手机上的文件或照片传输后重试。')
             status_issue = 'none'; status_wakeup.set()
             bind = ['--bind', f'{sock}:/mnt/usbmuxd']
             env = ['USBMUXD_SOCKET_ADDRESS=/mnt/usbmuxd']
@@ -641,7 +691,7 @@ async def supervise(args, info):
     except (OSError, ValueError, RuntimeError, asyncio.TimeoutError, InterruptedError) as exc:
         if not isinstance(exc, InterruptedError):
             final_phase = 'error'
-            if status_issue not in ('usb_missing','usb_role_failed','usb_permission'): status_issue = 'bridge_error'
+            if status_issue not in ('usb_missing','usb_role_failed','usb_permission','usb_busy'): status_issue = 'bridge_error'
         status_phase = 'stopping'; status_wakeup.set()
         set_state(str(exc))
     finally:
@@ -697,7 +747,7 @@ async def supervise(args, info):
             await asyncio.gather(broadcaster, return_exceptions=True)
         status_phase = final_phase
         final_pending = False if worker is None else final_state.get('clear_pending') is not False
-        status_issue = status_issue if status_issue in ('none','worker_error','clear_unconfirmed','bridge_error','usb_missing','usb_role_failed','usb_permission') else 'none'
+        status_issue = status_issue if status_issue in ('none','worker_error','clear_unconfirmed','bridge_error','usb_missing','usb_role_failed','usb_permission','usb_busy') else 'none'
         atomic_json(session / 'final.status.json', {'run_id':run_id,'phase':final_phase,
                     'issue':status_issue,'clear_pending':final_pending})
         await send_status()

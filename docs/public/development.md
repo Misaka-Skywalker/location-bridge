@@ -60,6 +60,8 @@ Some vendors also restrict ADB grants. On the tested OPPO, granting required tem
 
 Without this grant, USB connections already in host mode continue to work. Otherwise, select This device as controller in system USB settings and enable OTG if required by the device. Missing cables, multiple devices, unrecognized state, simulated ports and failed switches never count as connected. Do not run correction tests while attached to a computer: switching roles may interrupt USB debugging. The underlying interface comes from [AOSP UsbService](https://android.googlesource.com/platform/frameworks/base/+/HEAD/services/usb/java/com/android/server/usb/UsbService.java), not a stable public Android API.
 
+A ready host role does not guarantee an available interface. USB file or photo transfer on the phone can hold the same device. Startup stops with an actionable message when the current run's log shows a definite busy failure, instead of reconnecting just because the daemon socket exists. Close the transfer session before retrying. The helper does not automatically force-stop or disable system applications.
+
 ## Data flow
 
 Android location providers → helper selection and optional bounded inertial estimate → authenticated local helper interface → Termux service/worker → pymobiledevice3 tunnel and DVT → iPad simulated latitude/longitude. USB and Wi-Fi are separate transport paths. Helper status and additional measurements do not imply that the iPad receives those measurements. BLE reception has a diagnostic path only.
