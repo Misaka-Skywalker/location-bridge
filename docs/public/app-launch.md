@@ -2,7 +2,9 @@
 
 [简体中文](app-launch.zh-CN.md) · [Home](../../README.md)
 
-Version 0.4.1 adds buttons to request fixed bridge commands from the Android helper. On OPPO K12s with Android 16 and Termux 0.118.3, the status command, command completion callback and authenticated status return have been verified. USB start and stop from the new buttons remain to be validated. The bridge runtime, helper pairing and iPad trust and pairing still need to be set up as described in the [development notes](development.md).
+Version 0.4.1 adds buttons to request fixed bridge commands from the Android helper. The bridge runtime, helper pairing and iPad trust and pairing still need to be set up as described in the [development notes](development.md).
+
+Validated on 2026-11-13 with OPPO K12s, Android 16 and Termux 0.118.3: the status command, command completion callback and authenticated status return worked. In the subsequent USB test with iPad Wi-Fi disabled, the user confirmed that tapping **Connect iPad** automatically established the connection and the iPad received location data, without using the desktop widget or entering a terminal command. The new **Disconnect** button was not exercised in this test; other phone models remain unverified.
 
 ## One-time setup
 
