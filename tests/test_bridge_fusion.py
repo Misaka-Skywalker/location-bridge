@@ -46,10 +46,20 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(fix['accuracy_kind'],'model_estimate')
         self.assertEqual(fusion.parse_snapshot(value,'r',1,120.6,.6),(None,None))
         for change in ({'anchor_source':'fused'},{'accuracy_kind':'measurement'},
-                       {'accuracy_m':151},{'prediction_age_ms':1500},{'prediction_age_ms':2500},
+                       {'accuracy_m':float('inf')},{'prediction_age_ms':1500},{'prediction_age_ms':2500},
                        {'anchor_elapsed_realtime_nanos':121_000_000_000}):
             bad=snapshot(); bad['sample']=dict(value['sample'],**change)
             with self.subTest(change=change), self.assertRaises(ValueError): fusion.validate_snapshot(bad)
+
+    def test_continuous_inertial_crosses_old_time_and_uncertainty_limits(self):
+        value=snapshot(); value['elapsed_realtime_nanos']=3700_000_000_000
+        value['sample'].update(source='inertial', elapsed_realtime_nanos=3700_000_000_000,
+            accuracy_m=1e12, accuracy_kind='model_estimate', anchor_source='gps',
+            anchor_elapsed_realtime_nanos=100_000_000_000, prediction_age_ms=3600_000)
+        fix,token=fusion.parse_snapshot(value,'r',1,3700.1,.1)
+        self.assertEqual(fix['source'],'inertial')
+        self.assertEqual(fix['accuracy_m'],1e12)
+        self.assertEqual(fusion.parse_snapshot(value,'r',1,3700.6,.1),(None,None))
 
     def test_bad_sample(self):
         for patch in ({'latitude':float('nan')},{'longitude':181},{'elapsed_realtime_nanos':121_000_000_000},{'elapsed_realtime_nanos':0},{'is_mock':True},{'coordinate_system':'GCJ02'},{'source':'cell'},{'accuracy_m':-1},{'sequence':True}):

@@ -3,10 +3,10 @@ package org.locationbridge.source;
 public final class MotionSensorPolicyTest {
     static void check(boolean b){if(!b)throw new AssertionError();}
     public static void main(String[] args) {
-        check(MotionSensorPolicy.horizon(false, false, true)==8_000_000_000L);
-        check(MotionSensorPolicy.horizon(false, false, false)==3_000_000_000L);
-        check(MotionSensorPolicy.horizon(true, false, true)==3_000_000_000L);
-        check(MotionSensorPolicy.horizon(false, true, true)==3_000_000_000L);
+        check(MotionSensorPolicy.uncertaintyGrowthScale(false, false, true)==1.0);
+        check(MotionSensorPolicy.uncertaintyGrowthScale(false, false, false)==2.0);
+        check(MotionSensorPolicy.uncertaintyGrowthScale(true, false, true)==2.0);
+        check(MotionSensorPolicy.uncertaintyGrowthScale(false, true, true)==2.0);
         check(MotionSensorPolicy.magneticValid(new float[]{20,30,40},3,100,120));
         check(!MotionSensorPolicy.magneticValid(new float[]{1,1,1},3,100,120));
         check(!MotionSensorPolicy.magneticValid(new float[]{20,30,40},1,100,120));

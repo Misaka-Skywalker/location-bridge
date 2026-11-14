@@ -18,6 +18,22 @@ The diagnostics summarize available satellite status, observed constellations an
 
 The preferred motion backend uses the system rotation vector and linear acceleration. Android's rotation vector is a fused orientation sensor, typically using gyroscope and magnetic-field inputs; its underlying implementation and available sensors vary by device. If the preferred streams are missing or cannot be registered, the helper can use a geomagnetic rotation vector or subtract a suitably timed gravity sample from accelerometer data, subject to quality and freshness gates. [Android position sensors](https://developer.android.com/develop/sensors-and-location/sensors/sensors_position) · [Android motion sensors](https://developer.android.com/develop/sensors-and-location/sensors/sensors_motion)
 
-GNSS-assisted inertial prediction is experimental: its maximum horizon is eight seconds with the preferred backend and known heading accuracy, and three seconds for a degraded backend or unknown heading accuracy. Other checks can stop it earlier. A pressure sensor, when available, reports pressure in hPa while inertial collection is enabled; pressure is not substituted for geometric altitude.
+A pressure sensor, when available, reports pressure in hPa while inertial collection is enabled; pressure is not substituted for geometric altitude.
+
+## Continuous INS in 0.5.0
+
+The platform `fused` provider is a real input to location selection alongside GPS and network. This uses `LocationManager`, not the Google Play services fused-location SDK. The phone determines how its fused provider combines inputs; registering it does not prove that a particular radio or sensor contributed to a fix. See the SYS page for registration and the POS page for the selected source. [Android fused provider](https://developer.android.com/reference/android/location/LocationManager#FUSED_PROVIDER)
+
+Usable measured locations always take priority. When none remain, GNSS-initialized INS can supply positions with no elapsed-time limit and no 150 m model-uncertainty cutoff. Both the APK and Termux worker must be updated together. Sample timestamps remain monotonic; a delayed reacquisition may need another measured fix before publication resumes.
+
+INS needs a recent, quality-checked GNSS position and velocity to initialize. A sufficiently precise near-zero speed can initialize at rest without a movement track. Rotation and acceleration data must continue to meet quality and timing checks: an acceleration gap over 250 ms or a prediction older than 500 ms prevents continued output. Invalid orientation, numerical failure, excessive acceleration or speed, and the supported latitude limit can also stop propagation. An anchor is not fabricated when these conditions fail.
+
+Propagation advances in local WGS84 coordinates. The last accepted GNSS magnetic reference remains in use until a new one arrives, with its age available in diagnostics; this reference can become inaccurate over a long journey. Degraded sensor backends increase modeled uncertainty rather than shorten a time limit. Phone sensor bias accumulates, so unlimited duration does not imply reliable long-term accuracy.
+
+The INS page displays its own latitude/longitude, modeled uncertainty, ground speed, time since GNSS alignment, and the last correction residual. The residual is the **pre-correction INS position minus the incoming GNSS position at the same measurement time**, with total distance and signed east/north components. Positive values mean east/north. It is retained with its age until the next successful correction; GNSS error contributes to it, so it is not an independent measurement of INS error. During an outage, no new measured residual is available.
+
+Ground speed is displayed simultaneously in km/h and kts; protocol fields and calculations stay in m/s. Optional snapshot fields `inertial.position` and `inertial.last_correction` carry the diagnostics. A null position means no current usable INS estimate; a null correction means none has been recorded. `maximum_horizon_s` and sensor `prediction_horizon_s` are null, with `time_limit_enabled=false`.
+
+Offline regression tests cover a one-hour synthetic track, growing uncertainty, delayed GNSS correction, measured-source priority and stale-motion rejection. They do not validate physical sensor drift or sustained operation on a moving phone.
 
 Root access is not required. The helper does not invoke `su` or modify a vendor HAL. The core has not been tested on a Redmi K60 Pro, and the same sensor availability, accuracy or performance should not be assumed across models.

@@ -1,6 +1,6 @@
 package org.locationbridge.source;
 
-/** A degraded orientation path must shorten even an already active propagation. */
+/** Degraded sensors increase uncertainty without imposing an elapsed-time cutoff. */
 public final class AdaptiveInertialTest {
     static final long S=1_000_000_000L,T=100*S;
     static void check(boolean value,String message) { if(!value) throw new AssertionError(message); }
@@ -12,16 +12,14 @@ public final class AdaptiveInertialTest {
     }
     public static void main(String[] args) {
         DeadReckoning d=seeded();
-        check(d.predict(T+4*S)!=null,"good sensor path supports fourth second");
-        d.setMaximumHorizonNanos(3*S);
-        check(d.predict(T+4*S)==null,"quality reduction immediately stops old propagation");
-        d.setMaximumHorizonNanos(8*S);
-        check(d.predict(T+4*S)==null,"quality recovery cannot resurrect old anchor");
-        DeadReckoning capped=seeded(); capped.setMaximumHorizonNanos(100*S);
-        for(long t=T+4*S+100_000_000;t<=T+8*S;t+=100_000_000) capped.acceleration(t,0,0,t);
-        check(capped.predict(T+8*S+1)==null,"requested horizon cannot exceed absolute limit");
-        DeadReckoning invalid=seeded();invalid.setMaximumHorizonNanos(0);
-        check(invalid.predict(T+4*S)==null,"invalid limit fails closed");
+        double original=d.predict(T+4*S).uncertaintyMeters;
+        d.setUncertaintyGrowthScale(2);
+        double degraded=d.predict(T+4*S).uncertaintyMeters;
+        check(degraded>original,"degraded sensors increase uncertainty without a time cutoff");
+        d.setUncertaintyGrowthScale(1);
+        check(d.predict(T+4*S).uncertaintyMeters==degraded,"quality recovery cannot erase accumulated uncertainty");
+        for(long t=T+4*S+100_000_000;t<=T+20*S;t+=100_000_000) check(d.acceleration(t,0,0,t),"continuous samples");
+        check(d.predict(T+20*S)!=null,"degraded path continues beyond old horizon");
         System.out.println("AdaptiveInertial tests passed");
     }
 }

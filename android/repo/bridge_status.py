@@ -22,7 +22,7 @@ def make_status(info, worker, fix, *, phase, issue, now, utc_ms):
     source=worker.get('last_source') if fresh else 'unknown'
     if source not in ('gps','network','fused','test','inertial'): source='unknown'
     accuracy=worker.get('last_accuracy_m') if fresh else None
-    if type(accuracy) not in (float,int) or not math.isfinite(accuracy) or not 0<=accuracy<=1e9: accuracy=None
+    if type(accuracy) not in (float,int) or not math.isfinite(accuracy) or accuracy<0: accuracy=None
     kind='model_estimate' if source=='inertial' and worker.get('last_accuracy_kind')=='model_estimate' else 'reported' if source in ('gps','network','fused') and accuracy is not None else 'unknown'
     sequence=worker.get('last_sequence') if fresh else None
     if type(sequence) is not int or sequence<0: sequence=None

@@ -113,6 +113,8 @@ class StatusTests(unittest.TestCase):
         self.assertIn('来源：惯性推算',text)
         self.assertIn('模型误差估计 25.0米',text)
         self.assertIn('锚点预测时长：2.4秒',text)
+        state['last_prediction_age_ms']=3_600_000
+        self.assertIn('锚点预测时长：3600.0秒',service.describe_worker(state,None,100))
 
     def test_missing_clear_state_is_unknown_and_no_coordinates(self):
         text = service.describe_worker({}, None, 12)

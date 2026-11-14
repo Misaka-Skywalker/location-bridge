@@ -239,7 +239,7 @@ def describe_worker(state, fix, now, collector=None):
         source = '惯性推算'
         accuracy_text = '模型误差估计 ' + accuracy_text
         predicted = state.get('last_prediction_age_ms')
-        if type(predicted) in (int, float) and math.isfinite(predicted) and 0 <= predicted <= 8000:
+        if type(predicted) in (int, float) and math.isfinite(predicted) and predicted >= 0:
             prediction = f'；锚点预测时长：{predicted / 1000:.1f}秒'
     errors = []
     if isinstance(collector, dict) and isinstance(collector.get('providers'), dict):

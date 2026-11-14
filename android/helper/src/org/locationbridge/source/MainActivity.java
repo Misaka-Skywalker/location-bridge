@@ -167,7 +167,7 @@ public final class MainActivity extends Activity {
                 LocationService service=LocationService.instance;
                 if(service!=null) service.setInertialEnabled(enabled);
                 else getSharedPreferences("native_inertial",MODE_PRIVATE).edit().putBoolean("enabled",enabled).apply();
-                Toast.makeText(this,enabled?Language.tr("已启用短时惯性推算"):Language.tr("已停用惯性推算"),Toast.LENGTH_SHORT).show();
+                Toast.makeText(this,enabled?Language.tr("已启用惯性推算"):Language.tr("已停用惯性推算"),Toast.LENGTH_SHORT).show();
                 updateStatus();break;
         }
     }

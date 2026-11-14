@@ -43,10 +43,10 @@ def validate_fix(data, run_id, mode, now):
         if (data.get('accuracy_kind') != 'model_estimate' or data.get('anchor_source') != 'gps'
                 or type(anchor) is not int or type(sample) is not int or anchor <= 0 or sample < anchor
                 or type(predicted) not in (int, float) or not math.isfinite(predicted)
-                or not 1500 < predicted <= 8000 or accuracy > 150
+                or not predicted > 1500
                 or not math.isclose(predicted, (sample-anchor)/1e6, rel_tol=0, abs_tol=1e-6)):
             return None
-        if (sample / 1e9 > received or now - sample / 1e9 > .5 or now - anchor / 1e9 > 8
+        if (sample / 1e9 > received or now - sample / 1e9 > .5
                 or now - received + age_ms / 1000 > .500000001):
             return None
     elif now - received + age_ms / 1000 > MAX_AGE:

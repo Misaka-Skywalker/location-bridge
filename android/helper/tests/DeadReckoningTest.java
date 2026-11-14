@@ -42,11 +42,11 @@ public final class DeadReckoningTest {
         check(limit.anchor(gps(T,5),100,1,0,0,T),"horizon anchor");
         step(limit,T+8*S,0,0);
         check(limit.predict(T+8*S)!=null,"horizon inclusive");
-        check(limit.predict(T+8*S+1)==null,"beyond horizon");
+        check(limit.predict(T+8*S+1)!=null,"no time-only cutoff");
         DeadReckoning uncertainty=new DeadReckoning();
         check(uncertainty.anchor(gps(T,50),300,5,90,15,T),"uncertainty anchor");
         step(uncertainty,T+2*S,0,0);
-        check(uncertainty.predict(T+2*S)==null,"high model uncertainty rejected");
+        check(uncertainty.predict(T+2*S)!=null && uncertainty.predict(T+2*S).uncertaintyMeters>150,"high model uncertainty remains visible");
         DeadReckoning invalid=new DeadReckoning();
         check(!invalid.anchor(new Selector.Fix("network",0,0,5,T,false,1,1),20,1,0,1,T),"only GPS anchors");
         check(!invalid.anchor(new Selector.Fix("gps",0,0,5,T,true,1,1),20,1,0,1,T),"mock anchor rejected");

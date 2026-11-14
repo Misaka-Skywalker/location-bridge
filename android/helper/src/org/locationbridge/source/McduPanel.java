@@ -159,7 +159,7 @@ final class McduPanel extends LinearLayout {
                 String src=str(report,"source","unknown");
                 String label=src.equals("gps")?"GNSS":src.equals("fused")?Language.tr("系统融合"):src.equals("network")?Language.tr("网络定位"):src.equals("inertial")?Language.tr("惯性推算"):src.equals("test")?Language.tr("测试轨迹"):Language.tr("未知来源");
                 detail=Language.tr("最近发送 · ")+label;
-                if(!report.isNull("accuracy_m")) detail+=" · "+(src.equals("inertial")?Language.tr("模型误差 "):Language.tr("精度 "))+number(report,"accuracy_m","%.1f m");
+                if(!report.isNull("accuracy_m")) detail+=" · "+(src.equals("inertial")?Language.tr("模型误差 "):Language.tr("精度 "))+distance(report,"accuracy_m",false);
             }
         }else if(phase.equals("stopped")||phase.equals("error"))
             detail=report.optBoolean("clear_pending")?Language.tr("尚未确认模拟位置已清除，请在 Termux 中查看"):Language.tr("连接已结束；可点击连接按钮重新启动");
@@ -191,9 +191,15 @@ final class McduPanel extends LinearLayout {
     private String age(JSONObject o){return o==null?"---":String.format(Locale.ROOT,"%.1f s",Math.max(0,(snapshot.optLong("elapsed_realtime_nanos")-o.optLong("elapsed_realtime_nanos"))/1e9));}
     private void row(int r,String l,String lv,String right,String rv){labels[r][0].setText(l);values[r][0].setText(lv);labels[r][1].setText(right);values[r][1].setText(rv);}
     private static String provider(JSONObject ps,String key){JSONObject p=obj(ps,key);return p==null?"---":!p.optBoolean("enabled")?Language.tr("已关闭"):p.optBoolean("registered")?Language.tr("已启用"):Language.tr("尚未启动");}
+    private static String speed(JSONObject o,String key){return DisplayUnits.speed(o==null?Double.NaN:o.optDouble(key));}
+    private static String distance(JSONObject o,String key,boolean signed){return DisplayUnits.distance(o==null?Double.NaN:o.optDouble(key),signed);}
+    private String elapsed(JSONObject o,String key){
+        return o==null || !o.has(key)?"---":DisplayUnits.duration((snapshot.optLong("elapsed_realtime_nanos")-o.optLong(key))/1e9);
+    }
     private void render(){
         JSONObject s=obj(snapshot,"sample"),h=obj(snapshot,"altitude"),g=obj(snapshot,"gnss_motion"),i=obj(snapshot,"inertial");
         JSONObject sensors=obj(i,"sensors"),selection=obj(snapshot,"selection"),providers=obj(snapshot,"providers");
+        JSONObject ins=obj(i,"position"),correction=obj(i,"last_correction");
         running=snapshot!=null&&snapshot.optBoolean("running");
         boolean predicted="inertial".equals(str(s,"source",""));
         boolean active=i!=null&&i.optBoolean("active");
@@ -215,25 +221,25 @@ final class McduPanel extends LinearLayout {
             row(0,Language.tr("定位来源"),source(s),Language.tr("距上次更新"),age(s));
             row(1,Language.tr("纬度"),number(s,"latitude","%+.5f"),Language.tr("经度"),number(s,"longitude","%+.5f"));
             row(2,Language.tr("高度"),number(h,"altitude_m","%.1f m"),Language.tr("高度来源"),source(h));
-            row(3,predicted?Language.tr("模型误差估计"):Language.tr("水平精度"),number(s,"accuracy_m","%.1f m"),Language.tr("垂直精度"),number(h,"vertical_accuracy_m","%.1f m"));
+            row(3,predicted?Language.tr("模型误差估计"):Language.tr("水平精度"),distance(s,"accuracy_m",false),Language.tr("垂直精度"),number(h,"vertical_accuracy_m","%.1f m"));
             row(4,Language.tr("真航迹角"),number(g,"bearing_deg","%.1f°"),Language.tr("磁航迹角"),number(g,"magnetic_bearing_deg","%.1f°"));
-            row(5,Language.tr("GNSS 地速"),number(g,"speed_m_s","%.1f m/s"),Language.tr("惯性推算"),predicted?String.format(Locale.ROOT,Language.tr("推算 %.2f s"),s.optDouble("prediction_age_ms")/1000):enabled?Language.tr("已启用"):Language.tr("已停用"));
+            row(5,Language.tr(predicted?"惯导地速":"GNSS 地速"),speed(predicted?s:g,"speed_m_s"),Language.tr("惯性推算"),predicted?DisplayUnits.duration(s.optDouble("prediction_age_ms")/1000):enabled?Language.tr("已启用"):Language.tr("已停用"));
         }else if(page.equals("GNSS")){
             title.setText(Language.tr("高度与速度  2/5"));
             row(0,Language.tr("高度（米）"),number(h,"altitude_m","%.1f m"),Language.tr("高度（英尺）"),h==null?"---":String.format(Locale.ROOT,"%.0f ft",h.optDouble("altitude_m")*3.280839895));
             row(1,Language.tr("高度来源"),source(h),Language.tr("高度基准"),h==null?"---":Language.tr("WGS84 椭球"));
             row(2,Language.tr("垂直精度"),number(h,"vertical_accuracy_m","%.1f m"),Language.tr("距上次更新"),age(h));
-            row(3,Language.tr("GNSS 地速"),number(g,"speed_m_s","%.1f m/s"),Language.tr("地速精度"),number(g,"speed_accuracy_m_s","%.2f m/s"));
+            row(3,Language.tr(predicted?"惯导地速":"GNSS 地速"),speed(predicted?s:g,"speed_m_s"),Language.tr("地速精度"),predicted?"---":speed(g,"speed_accuracy_m_s"));
             row(4,Language.tr("真航迹角"),number(g,"bearing_deg","%.1f°"),Language.tr("磁航迹角"),number(g,"magnetic_bearing_deg","%.1f°"));
             row(5,Language.tr("磁差（估算）"),declination(g),Language.tr("真航迹角精度"),number(g,"bearing_accuracy_deg","%.1f°"));
         }else if(page.equals("INS")){
             title.setText(Language.tr("惯性推算  3/5"));
-            row(0,Language.tr("推算功能"),enabled?Language.tr("已启用"):Language.tr("已停用"),Language.tr("当前定位"),active?Language.tr("惯性推算"):s!=null?Language.tr("实测位置"):Language.tr("等待定位"));
-            row(1,Language.tr("姿态传感器"),sensors!=null&&sensors.optBoolean("rotation_registered")?Language.tr("已启用"):"---",Language.tr("线加速度传感器"),sensors!=null&&sensors.optBoolean("acceleration_registered")?Language.tr("已启用"):"---");
-            row(2,Language.tr("有效采样"),sensors==null?"---":String.valueOf(sensors.optLong("samples")),Language.tr("丢弃采样"),sensors==null?"---":String.valueOf(sensors.optLong("rejected")));
-            row(3,Language.tr("推算时长"),predicted?String.format(Locale.ROOT,"%.2f s",s.optDouble("prediction_age_ms")/1000):"---",Language.tr("最长推算"),number(i,"maximum_horizon_s","%.1f s"));
-            row(4,Language.tr("模型误差估计"),predicted?number(s,"accuracy_m","%.1f m"):"---",Language.tr("误差上限"),"150 m");
-            row(5,Language.tr("校准来源"),Language.tr("GNSS 地速"),Language.tr("高度"),h!=null?Language.tr("实测高度"):"---");
+            row(0,Language.tr("推算状态"),!enabled?Language.tr("已停用"):active?Language.tr("接替中"):ins!=null?Language.tr("已校准"):Language.tr("等待校准"),Language.tr("距 GNSS 校准"),elapsed(ins,"anchor_elapsed_realtime_nanos"));
+            row(1,Language.tr("惯导纬度"),number(ins,"latitude","%+.5f"),Language.tr("惯导经度"),number(ins,"longitude","%+.5f"));
+            row(2,Language.tr("模型误差估计"),distance(ins,"accuracy_m",false),Language.tr("惯导地速"),speed(ins,"speed_m_s"));
+            row(3,Language.tr("上次校正差"),distance(correction,"distance_m",false),Language.tr("距上次校正"),elapsed(correction,"elapsed_realtime_nanos"));
+            row(4,Language.tr("东西差（+东）"),distance(correction,"east_m",true),Language.tr("南北差（+北）"),distance(correction,"north_m",true));
+            row(5,Language.tr("运动传感器"),sensors!=null&&sensors.optBoolean("rotation_registered")&&sensors.optBoolean("acceleration_registered")?Language.tr("已启用"):Language.tr("不可用"),Language.tr("推算时限"),Language.tr("不限"));
         }else if(page.equals("SYS")){
             title.setText(Language.tr("系统状态  4/5"));
             row(0,Language.tr("手机定位"),running?Language.tr("运行中"):Language.tr("已停止"),Language.tr("位置状态"),s!=null?Language.tr("有效"):Language.tr("等待定位"));
@@ -253,21 +259,19 @@ final class McduPanel extends LinearLayout {
             row(5,Language.tr("环境气压"),number(sensors,"pressure_hpa","%.1f hPa"),Language.tr("位置请求间隔"),number(obj(snapshot,"adaptive"),"requested_interval_ms","%.0f ms"));
         }
         String reason=str(i,"reason","waiting_anchor");
-        scratch.setText(!running?Language.tr("点击“启动定位”获取手机位置"):page.equals("INS")?inertialReason(reason):predicted?Language.tr("正在推算位置，误差为模型估计值\n收到新定位后自动恢复实测位置"):s==null?Language.tr("正在等待定位\n")+inertialReason(reason):Language.tr("定位正常 · ")+(h==null?Language.tr("暂无高度数据"):Language.tr("高度采用 WGS84 椭球高")));
+        scratch.setText(!running?Language.tr("点击“启动定位”获取手机位置"):page.equals("INS")?inertialReason(reason)+"\n"+Language.tr("校正差为校准前 INS−GNSS，同一时刻比较"):predicted?Language.tr("正在推算位置，误差为模型估计值\n收到新定位后自动恢复实测位置"):s==null?Language.tr("正在等待定位\n")+inertialReason(reason):Language.tr("定位正常 · ")+(h==null?Language.tr("暂无高度数据"):Language.tr("高度采用 WGS84 椭球高")));
         if(page.equals("GNSS") && running && g!=null)
             scratch.setText(Language.tr("航迹角表示移动方向，磁航迹角由磁差换算\n")+(h==null?Language.tr("暂无高度数据"):Language.tr("高度采用 WGS84 椭球高")));
         if(page.equals("RX")) scratch.setText(Language.tr("能力按实际数据识别，未知不代表不支持\n气压不参与高度解算"));
     }
     private static String inertialReason(String reason){
         switch(reason){
-            case "eligible":return Language.tr("已就绪，可短时推算位置");
+            case "eligible":return Language.tr("持续推算中，实测位置可用时优先采用");
             case "gnss_fresh":return Language.tr("GNSS 定位正常，推算速度已校准");
             case "disabled":return Language.tr("惯性推算已停用");
             case "gnss_velocity_unavailable":return Language.tr("等待可靠的 GNSS 地速和航迹角");
             case "waiting_anchor":case "waiting_gnss":return Language.tr("等待 GNSS 数据完成初始校准");
             case "reference_expired":return Language.tr("需要新的 GNSS 位置更新磁差");
-            case "horizon_expired":return Language.tr("推算达到时限，等待 GNSS");
-            case "uncertainty_exceeded":return Language.tr("模型误差超限，等待 GNSS");
             case "sensor_stale":case "sensor_timing":return Language.tr("运动数据中断，等待重新校准");
             case "sensor_accuracy_low":case "invalid_sensor_sample":case "heading_accuracy_low":return Language.tr("传感器质量不足，暂停推算");
             case "direction_unavailable":return Language.tr("等待可靠姿态数据");

@@ -16,8 +16,9 @@ public final class PositionPublicationTest {
         for(int i=1;i<=40;i++) dr.acceleration(t+i*S/20,0,0,t+i*S/20);
         DeadReckoning.Prediction prediction=dr.predict(t+2*S);
         check(prediction!=null,"prediction ready");
-        PositionPublication.Output estimated=publication.select(gps,prediction,t+2*S);
-        check(estimated.prediction!=null && estimated.sequence>first.sequence,"prediction replaces aging fix");
+        check(publication.select(gps,prediction,t+2*S).measured==gps,"valid measured source wins over INS");
+        PositionPublication.Output estimated=publication.select(null,prediction,t+2*S);
+        check(estimated.prediction!=null && estimated.sequence>first.sequence,"prediction takes over without measured source");
         check(publication.select(fix(t+S),null,t+2*S)==null,"reacquisition cannot publish older time");
         check(publication.select(gps,null,t+3*S)==null,"expiry never revives older raw fix");
         Selector.Fix returned=fix(t+3*S);

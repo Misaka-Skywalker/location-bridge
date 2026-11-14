@@ -7,6 +7,24 @@ import java.util.Map;
 final class LanguageCatalog {
     private static final Map<String,String> EN = new HashMap<>();
     static {
+        EN.put("推算状态", "INS STATE");
+        EN.put("接替中", "IN USE");
+        EN.put("已校准", "ALIGNED");
+        EN.put("等待校准", "ALIGN WAIT");
+        EN.put("距 GNSS 校准", "GNSS ANCHOR AGE");
+        EN.put("惯导纬度", "INS LAT");
+        EN.put("惯导经度", "INS LON");
+        EN.put("惯导地速", "INS GS");
+        EN.put("上次校正差", "LAST CORR Δ");
+        EN.put("距上次校正", "CORR AGE");
+        EN.put("东西差（+东）", "ΔE (+E)");
+        EN.put("南北差（+北）", "ΔN (+N)");
+        EN.put("运动传感器", "MOTION SENSORS");
+        EN.put("推算时限", "TIME LIMIT");
+        EN.put("不限", "NONE");
+        EN.put("校正差为校准前 INS−GNSS，同一时刻比较", "Pre-correction INS − GNSS at the same time");
+        EN.put("持续推算中，实测位置可用时优先采用", "INS running; measured positions take priority");
+
         EN.put("请点击 Termux 通知打开终端，让命令继续执行", "Open the Termux notification to let the command continue");
         EN.put("点击“连接 iPad”启动 USB 连接", "Tap Connect iPad to start USB");
         EN.put("连接 iPad 默认使用 USB；Wi-Fi 连接请前往设置", "Connect iPad uses USB; Wi-Fi is in Settings");
@@ -187,7 +205,6 @@ final class LanguageCatalog {
         EN.put("暂无高度数据", "Altitude unavailable");
         EN.put("高度采用 WGS84 椭球高", "Altitude is WGS84 ellipsoid height");
         EN.put("航迹角表示移动方向，磁航迹角由磁差换算\n", "Track is direction of travel; magnetic track uses variation\n");
-        EN.put("已就绪，可短时推算位置", "Ready for short-term dead reckoning");
         EN.put("GNSS 定位正常，推算速度已校准", "GNSS available; DR velocity calibrated");
         EN.put("惯性推算已停用", "Dead reckoning disabled");
         EN.put("等待可靠的 GNSS 地速和航迹角", "Waiting for reliable GNSS GS and track");
@@ -214,7 +231,7 @@ final class LanguageCatalog {
         EN.put("系统定位设置", "System location settings");
         EN.put("打开 Termux（连接 iPad）", "Open Termux (connect iPad)");
         EN.put("返回", "Back");
-        EN.put("已启用短时惯性推算", "Short-term dead reckoning enabled");
+        EN.put("已启用惯性推算", "Continuous INS enabled");
         EN.put("已停用惯性推算", "Dead reckoning disabled");
         EN.put("定位和通知权限均已授予", "Location and notification permissions granted");
         EN.put("请先前往“设置 → 与 Termux 配对”", "First open Settings → Pair with Termux");

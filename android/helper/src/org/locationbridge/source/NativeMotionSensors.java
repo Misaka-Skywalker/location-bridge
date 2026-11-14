@@ -40,7 +40,6 @@ final class NativeMotionSensors implements SensorEventListener {
     private long retryToken;
     private long lifecycle, activeLifecycle;
     private boolean desiredRunning;
-    private long referenceGeneration;
 
     NativeMotionSensors(Context context, Listener listener) {
         if (context == null || listener == null) throw new IllegalArgumentException("context and listener required");
@@ -153,7 +152,7 @@ final class NativeMotionSensors implements SensorEventListener {
         if (manager != null) manager.unregisterListener(this);
         synchronized(lock) {
             started=false; rotationRegistered=false; accelerationRegistered=false; referenceValid=false;
-            referenceGeneration++; rotationTime=0; accelerationGate.clear(); referenceTime=0; orientations.clear();
+            rotationTime=0; accelerationGate.clear(); referenceTime=0; orientations.clear();
             rotationAccuracy=SensorManager.SENSOR_STATUS_UNRELIABLE; accelerationAccuracy=SensorManager.SENSOR_STATUS_UNRELIABLE;
             headingAccuracy="unknown"; state="stopped";
             gravityValues=null; magneticValues=null; gravityTime=magneticTime=pressureTime=0;
@@ -167,28 +166,17 @@ final class NativeMotionSensors implements SensorEventListener {
         long now=SystemClock.elapsedRealtimeNanos();
         if (!Double.isFinite(lat) || Math.abs(lat)>90 || !Double.isFinite(lon) || Math.abs(lon)>180
                 || !Double.isFinite(altitude) || utc<=0 || elapsed<=0 || elapsed>now || now-elapsed>1_500_000_000L) {
-            synchronized(lock) { if (!desiredRunning || lifecycle!=lifecycleToken || activeLifecycle!=lifecycleToken) return; referenceValid=false; referenceGeneration++; }
+            synchronized(lock) { if (!desiredRunning || lifecycle!=lifecycleToken || activeLifecycle!=lifecycleToken) return; referenceValid=false; }
             invalidate("invalid_reference"); return;
         }
         double actualAltitude=altitudeKnown ? altitude : 0;
         double d=new GeomagneticField((float)lat,(float)lon,(float)actualAltitude,utc).getDeclination();
-        if (!Double.isFinite(d)) { synchronized(lock) { if (!desiredRunning || lifecycle!=lifecycleToken || activeLifecycle!=lifecycleToken) return; referenceValid=false; referenceGeneration++; } invalidate("invalid_reference"); return; }
-        final long generation;
+        if (!Double.isFinite(d)) { synchronized(lock) { if (!desiredRunning || lifecycle!=lifecycleToken || activeLifecycle!=lifecycleToken) return; referenceValid=false; } invalidate("invalid_reference"); return; }
         synchronized(lock) {
             if (!desiredRunning || lifecycle!=lifecycleToken || activeLifecycle!=lifecycleToken || !started || !rotationRegistered || !accelerationRegistered) return;
             if (referenceValid && elapsed<=referenceTime) return;
             declination=d; referenceTime=elapsed; referenceValid=true; referenceAltitudeAssumed=!altitudeKnown;
-            generation=++referenceGeneration;
         }
-        long remaining = Math.max(1, (10*SECOND-(now-elapsed)+999_999)/1_000_000);
-        main.postDelayed(() -> {
-            boolean expired;
-            synchronized(lock) {
-                expired=desiredRunning && lifecycle==lifecycleToken && activeLifecycle==lifecycleToken && started && referenceValid && generation==referenceGeneration && SystemClock.elapsedRealtimeNanos()-referenceTime>=10*SECOND;
-                if (expired) referenceValid=false;
-            }
-            if (expired) invalidate("reference_expired");
-        },remaining);
     }
     @Override public void onAccuracyChanged(Sensor sensor,int accuracy) {
         if (Looper.myLooper()!=Looper.getMainLooper()) { main.post(() -> onAccuracyChanged(sensor,accuracy)); return; }
@@ -273,7 +261,7 @@ final class NativeMotionSensors implements SensorEventListener {
             listener.onSample(t,horizontal[0],horizontal[1]);
         } catch (IllegalArgumentException ex) { invalidate("invalid_acceleration"); }
     }
-    long predictionHorizonNanos() { synchronized(lock) {return MotionSensorPolicy.horizon(degradedRotation,gravityFallback,"known".equals(headingAccuracy));} }
+    double uncertaintyGrowthScale() { synchronized(lock) {return MotionSensorPolicy.uncertaintyGrowthScale(degradedRotation,gravityFallback,"known".equals(headingAccuracy));} }
     JSONObject snapshot() {
         synchronized(lock) {
             try { return new JSONObject().put("state",state).put("started",started)
@@ -284,7 +272,9 @@ final class NativeMotionSensors implements SensorEventListener {
                     .put("linear_acceleration_available",linearAcceleration!=null).put("pressure_available",pressure!=null)
                     .put("selected_backend",!rotationRegistered || !accelerationRegistered ? "unavailable" : (degradedRotation?"geomagnetic":"rotation_vector")+"+"+(gravityFallback?"gravity_subtraction":"linear_acceleration"))
                     .put("degraded",degradedRotation || gravityFallback || !"known".equals(headingAccuracy))
-                    .put("request_hz",20).put("prediction_horizon_s",predictionHorizonNanos()/SECOND)
+                    .put("request_hz",20).put("prediction_horizon_s",JSONObject.NULL)
+                    .put("uncertainty_growth_scale",uncertaintyGrowthScale())
+                    .put("reference_age_s",referenceValid?(SystemClock.elapsedRealtimeNanos()-referenceTime)/(double)SECOND:JSONObject.NULL)
                     .put("pressure_state",!started?"stopped":!pressureRegistered?"unavailable":pressureTime==0?"waiting":SystemClock.elapsedRealtimeNanos()-pressureTime>5*SECOND?"stale":"active")
                     .put("pressure_hpa",pressureTime==0 || SystemClock.elapsedRealtimeNanos()-pressureTime>5*SECOND?JSONObject.NULL:pressureHpa)
                     .put("rotation_registered",rotationRegistered).put("acceleration_registered",accelerationRegistered)

@@ -65,7 +65,7 @@ public final class LocationService extends Service {
             @Override public void onSample(long elapsed, double east, double north) {
                 synchronized (LocationService.this) {
                     if (running && inertialEnabled) {
-                        deadReckoning.setMaximumHorizonNanos(motion.predictionHorizonNanos());
+                        deadReckoning.setUncertaintyGrowthScale(motion.uncertaintyGrowthScale());
                         deadReckoning.acceleration(elapsed,east,north,SystemClock.elapsedRealtimeNanos());
                     }
                 }
@@ -146,7 +146,7 @@ public final class LocationService extends Service {
             policy.remove(name,now);
             nativeAltitude.remove(name);
             if ("gps".equals(name)) gnssAltitude.clear();
-            if ("gps".equals(name)) { deadReckoning.invalidate(reason,SystemClock.elapsedRealtimeNanos()); gnssMotion=null; profile.clearMotion(); }
+            if ("gps".equals(name)) { if ("permission_missing".equals(reason)) deadReckoning.invalidate(reason,SystemClock.elapsedRealtimeNanos()); gnssMotion=null; profile.clearMotion(); }
         }
         usable.put(name,false);errors.put(name,reason);
         if (listener != null) try { manager.removeUpdates(listener); } catch (RuntimeException ignored) { }
@@ -215,7 +215,6 @@ public final class LocationService extends Service {
         if (!loc.hasAccuracy()) {
             policy.remove(name,now);nativeAltitude.remove(name);
             if ("gps".equals(name)) gnssAltitude.clear();
-            if ("gps".equals(name)) deadReckoning.invalidate("invalid_gnss",now);
             return;
         }
         Selector.Fix f = new Selector.Fix(name, loc.getLatitude(), loc.getLongitude(), loc.getAccuracy(),
@@ -226,7 +225,6 @@ public final class LocationService extends Service {
                 nativeAltitude.remove(name);
                 if ("gps".equals(name)) gnssAltitude.clear();
             }
-            if ("gps".equals(name) && !"out_of_order".equals(reason)) deadReckoning.invalidate("gnss_"+reason,now);
             return;
         }
         sequence++;
@@ -261,8 +259,7 @@ public final class LocationService extends Service {
             } catch (Exception ignored) { gnssMotion=null; }
             if (inertialEnabled) {
                 motion.setReference(f.latitude,f.longitude,hasHeight?loc.getAltitude():0,f.timestamp,f.elapsed,hasHeight);
-                if (!deadReckoning.anchor(f,speed,speedAccuracy,bearing,bearingAccuracy,now))
-                    deadReckoning.invalidate("gnss_velocity_unavailable",now);
+                deadReckoning.anchor(f,speed,speedAccuracy,bearing,bearingAccuracy,now);
             }
         }
     }
@@ -295,7 +292,7 @@ public final class LocationService extends Service {
     synchronized JSONObject snapshot() throws Exception {
         long now = SystemClock.elapsedRealtimeNanos();
         policy.setAgingRate(profile.agingRate(now));
-        deadReckoning.setMaximumHorizonNanos(motion.predictionHorizonNanos());
+        deadReckoning.setUncertaintyGrowthScale(motion.uncertaintyGrowthScale());
         JSONObject providers = new JSONObject();
         for (String name : names) {
             String issue=providerIssue(name);
@@ -303,7 +300,8 @@ public final class LocationService extends Service {
             providers.put(name, provider(name));
         }
         Selector.Fix f = running ? policy.selected(now) : null;
-        DeadReckoning.Prediction predicted=running && inertialEnabled?deadReckoning.predict(now):null;
+        DeadReckoning.Prediction estimate=running && inertialEnabled?deadReckoning.estimate(now):null;
+        DeadReckoning.Prediction predicted=estimate!=null && estimate.predictionAgeMillis>1500?estimate:null;
         PositionPublication.Output output=publication.select(f,predicted,now);
         JSONObject result = new JSONObject().put("protocol", 1).put("session_id", session)
                 .put("running", running).put("elapsed_realtime_nanos", now).put("providers", providers)
@@ -329,7 +327,9 @@ public final class LocationService extends Service {
                 .put("altitude_m",height.altitude).put("elapsed_realtime_nanos",height.elapsed)
                 .put("vertical_accuracy_m",height.verticalAccuracy==null?JSONObject.NULL:height.verticalAccuracy);
         JSONObject inertial=new JSONObject().put("enabled",inertialEnabled)
-                .put("maximum_horizon_s",motion.predictionHorizonNanos()/1_000_000_000.0)
+                .put("maximum_horizon_s",JSONObject.NULL).put("time_limit_enabled",false)
+                .put("position",estimate==null?JSONObject.NULL:inertialPositionJson(estimate))
+                .put("last_correction",inertialEnabled?correctionJson(deadReckoning.lastDeviation()):JSONObject.NULL)
                 .put("reason",inertialEnabled?deadReckoning.reason(now):"disabled")
                 .put("active",output!=null && output.prediction!=null)
                 .put("sensors",motion.snapshot());
@@ -352,8 +352,22 @@ public final class LocationService extends Service {
                 .put("timestamp_ms",f!=null?f.timestamp:p.timestampMillis)
                 .put("is_mock",false).put("coordinate_system","WGS84");
         if (p!=null) sample.put("accuracy_kind","model_estimate").put("anchor_source","gps")
-                .put("anchor_elapsed_realtime_nanos",p.anchorElapsed).put("prediction_age_ms",p.predictionAgeMillis);
+                .put("anchor_elapsed_realtime_nanos",p.anchorElapsed).put("prediction_age_ms",p.predictionAgeMillis)
+                .put("speed_m_s",p.speedMetersPerSecond).put("bearing_deg",p.bearingDegrees);
         return sample;
+    }
+    private JSONObject inertialPositionJson(DeadReckoning.Prediction p) throws Exception {
+        return new JSONObject().put("latitude",p.latitude).put("longitude",p.longitude)
+                .put("accuracy_m",p.uncertaintyMeters).put("accuracy_kind","model_estimate")
+                .put("speed_m_s",p.speedMetersPerSecond).put("bearing_deg",p.bearingDegrees)
+                .put("elapsed_realtime_nanos",p.elapsed).put("anchor_elapsed_realtime_nanos",p.anchorElapsed)
+                .put("prediction_age_ms",p.predictionAgeMillis);
+    }
+    private Object correctionJson(DeadReckoning.Deviation d) throws Exception {
+        if(d==null) return JSONObject.NULL;
+        return new JSONObject().put("reference_source","gps").put("elapsed_realtime_nanos",d.elapsed)
+                .put("east_m",d.eastMeters).put("north_m",d.northMeters).put("distance_m",d.distanceMeters)
+                .put("reference_accuracy_m",d.referenceAccuracyMeters).put("prediction_age_ms",d.predictionAgeMillis);
     }
     private void serve() {
         while (running) {

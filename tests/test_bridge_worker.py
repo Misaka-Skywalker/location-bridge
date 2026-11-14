@@ -32,12 +32,17 @@ class FixValidationTests(unittest.TestCase):
         self.assertIsNotNone(worker.validate_fix(fix,'run','fusion',100.5))
         self.assertIsNone(worker.validate_fix(fix,'run','fusion',100.501))
         self.assertIsNone(worker.validate_fix(fix,'run','gps',100.2))
-        for change in ({'anchor_source':'fused'},{'accuracy_kind':'measured'},{'accuracy_m':151},
+        for change in ({'anchor_source':'fused'},{'accuracy_kind':'measured'},{'accuracy_m':float('inf')},
                        {'prediction_age_ms':1999},{'elapsed_realtime_nanos':101_000_000_000}):
             with self.subTest(change=change):
                 self.assertIsNone(worker.validate_fix(dict(fix,**change),'run','fusion',100.2))
         late=dict(fix,anchor_elapsed_realtime_nanos=92_000_000_000,prediction_age_ms=8000)
-        self.assertIsNone(worker.validate_fix(late,'run','fusion',100.1))
+        self.assertIsNotNone(worker.validate_fix(late,'run','fusion',100.1))
+        continuous=dict(fix,anchor_elapsed_realtime_nanos=1_000_000_000,
+            elapsed_realtime_nanos=3601_000_000_000,prediction_age_ms=3600_000,
+            accuracy_m=1e12,received_monotonic=3601.1)
+        self.assertIsNotNone(worker.validate_fix(continuous,'run','fusion',3601.2))
+        self.assertIsNone(worker.validate_fix(continuous,'run','fusion',3601.6))
 
     def test_hybrid_source_restrictions(self):
         gps = dict(self.fix, source='gps')

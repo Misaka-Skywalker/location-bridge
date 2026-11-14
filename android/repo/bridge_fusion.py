@@ -70,14 +70,14 @@ def validate_snapshot(value):
     if sample.get('coordinate_system') != 'WGS84': raise ValueError('invalid_coordinate_system')
     _number(sample.get('latitude'), -90, 90)
     _number(sample.get('longitude'), -180, 180)
-    _number(sample.get('accuracy_m'), 0, 150 if sample['source'] == 'inertial' else 1e9)
+    _number(sample.get('accuracy_m'), 0, math.inf if sample['source'] == 'inertial' else 1e9)
     if sample['source'] == 'inertial':
         anchor = sample.get('anchor_elapsed_realtime_nanos')
         predicted = sample.get('prediction_age_ms')
         if (sample.get('accuracy_kind') != 'model_estimate' or sample.get('anchor_source') != 'gps'
                 or not _integer(anchor, minimum=1) or anchor > sample_stamp):
             raise ValueError('invalid_inertial_metadata')
-        _number(predicted, 1500, 8000)
+        _number(predicted, 1500, math.inf)
         if predicted <= 1500 or not math.isclose(predicted, (sample_stamp-anchor)/1e6, rel_tol=0, abs_tol=1e-6):
             raise ValueError('invalid_inertial_metadata')
     return value
@@ -97,7 +97,7 @@ def parse_snapshot(raw, run_id, sequence, now, roundtrip_seconds):
         snapshot_time = raw['elapsed_realtime_nanos'] / 1e9
         if snapshot_time > now or sample_time > now or anchor_time > now:
             raise ValueError('invalid_sample_time')
-        if max(age_ms / 1000, now - sample_time) > .5 or now - anchor_time > 8:
+        if max(age_ms / 1000, now - sample_time) > .5:
             return None, None
     elif age_ms > 10000: return None, None
     fix = {'run_id':run_id, 'sequence':sequence, 'source':sample['source'],
