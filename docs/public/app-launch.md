@@ -22,6 +22,6 @@ The Termux property also permits other apps that already hold `RUN_COMMAND` to m
 
 ## Use
 
-Tap **Connect iPad** on the home screen to start the system-fused source over USB; tap **Disconnect** to request a stop. Settings provides a Wi-Fi connection option. Under **Termux launch settings**, **Check launch interface** requests a status command, while **Open Termux only** opens the terminal without starting the bridge.
+Tap **CONNECT** on the home screen to start the system-fused source over USB; tap **DISCONNECT** to request a stop. **SETUP** provides a Wi-Fi connection option. Under **TERMUX SETUP**, **CHECK LAUNCHER** requests a status command, while **OPEN TERMUX** opens the terminal without starting the bridge.
 
 The helper explicitly opens Termux for its fixed terminal command. If Android still blocks the terminal session, tap the Termux notification and check the session. A pending request or completed command does **not** mean the bridge is connected: use the authenticated bridge status to determine whether a connection is established. On disconnect or interrupted cleanup, independently verify that the iPad has returned to its normal location state.

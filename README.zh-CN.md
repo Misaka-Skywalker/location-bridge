@@ -16,6 +16,8 @@ Location Bridge 是一个实验性的 Android 到 iPad 定位桥。Android 助�
 
 0.5.0 增加 km/h 与 kts 双单位地速、持续惯导接替，以及惯导位置与校正差显示。选源优先级和有效条件详见[自适应内核说明](docs/public/adaptive-core.zh-CN.md)。
 
+0.5.1 统一英文仪表缩写、POS／INS 监控页和操作键。`INS EPU` 表示模型估计的位置不确定度，尚未标定置信水平；`LAST POS Δ` 表示同一时刻、校准前的 INS−GNSS 位置差，两者含义不同。 [界面术语](docs/public/display-terms.zh-CN.md)
+
 ## 当前状态与限制
 
 - 已观察到 Wi-Fi 和 USB 下的固定点及模拟轨迹；测试过的 USB 通道不依赖局域网。真实移动场景下 Android 到 iPad 的持续全链路尚未验证，长时间运行和锁屏场景也未验证。
@@ -23,7 +25,7 @@ Location Bridge 是一个实验性的 Android 到 iPad 定位桥。Android 助�
 - 实验性 GNSS 辅助惯性推算不再按经过时间终止；仅在所有实测位置均不可用时接替，仍需初始 GNSS 校准和连续有效的运动数据。模型误差随时间增长，不再因超过精度阈值自动退出；模型值不等于实测漂移或完整性保证。
 - 已在诊断中验证 iPhone 到 Android 的 BLE 接收，但外部 BLE 来源尚未接入正式 iPad 发送进程。未签名的 iOS 精度实验不属于本次发布。
 - 助手可在 **设置 → Language / 语言** 中切换简体中文和 English；选择会保存，切换时不停止服务。
-- `GS` 为地速，`ALT` 为高度，`TRK TRUE`／`TRK MAG` 为相对真北／磁北的运动航迹，`VAR` 为磁差。航迹表示运动方向，不等于设备朝向。Android 高度是 WGS84 椭球高，不是气压高度或平均海平面高度。
+- `GS` 为地速，`ALT` 为高度，`TRK TRUE`／`TRK MAG` 为相对真北／磁北的运动航迹，`MAG VAR` 为磁差。航迹表示运动方向，不等于设备朝向。Android 高度是 WGS84 椭球高，不是气压高度或平均海平面高度。
 
 ## 仓库与开发
 

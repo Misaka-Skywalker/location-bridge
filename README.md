@@ -16,14 +16,16 @@ Version 0.4.2 adds a vector launcher icon inspired by a standby navigation displ
 
 Version 0.5.0 adds ground speed in km/h and kts, continuous INS fallback, and an INS position/correction display. See the [adaptive core notes](docs/public/adaptive-core.md) for source priority and validity requirements.
 
+Version 0.5.1 refines the English display with concise aviation-style labels, POS/INS monitor pages and explicit action keys. `INS EPU` means the model's estimated position uncertainty; its confidence level has not been calibrated. `LAST POS Δ` is the time-aligned pre-correction INS−GNSS difference. These are distinct quantities. [Display terminology](docs/public/display-terms.md)
+
 ## Status and limits
 
 - Fixed points and simulated tracks have been observed on an iPad over Wi-Fi and USB. The tested USB path does not require a LAN. Continuous real-world movement through the full Android-to-iPad path has not yet been validated; long-duration and lock-screen operation remain unverified.
 - The current iPad DVT simulation call sends **latitude and longitude only**. Altitude, accuracy, ground speed, true/magnetic track and magnetic variation are helper-side display or metadata; they are not delivered to the iPad by this path.
 - The experimental GNSS-assisted inertial estimate has no elapsed-time cutoff. It is used only when no measured position remains usable, and still requires an initial GNSS anchor and uninterrupted valid motion data. Model uncertainty grows without an automatic accuracy cutoff; it is not measured drift or an integrity guarantee.
 - iPhone-to-Android BLE reception has been demonstrated for diagnostics, but the external BLE source is not integrated into the production iPad worker. An unsigned iOS accuracy experiment is outside this release.
-- The helper can switch between English and 简体中文 in **Settings → Language / 语言**. The preference persists without stopping the service.
-- `GS` is ground speed; `ALT` is altitude; `TRK TRUE` and `TRK MAG` are movement tracks relative to true and magnetic north; `VAR` is magnetic variation. Track is the direction of motion, not device heading. Android altitude is WGS84 ellipsoid height, not pressure altitude or mean-sea-level elevation.
+- The helper can switch between English and 简体中文 in **SETUP → Language / 语言**. The preference persists without stopping the service.
+- `GS` is ground speed; `ALT` is altitude; `TRK TRUE` and `TRK MAG` are movement tracks relative to true and magnetic north; `MAG VAR` is magnetic variation. Track is the direction of motion, not device heading. Android altitude is WGS84 ellipsoid height, not pressure altitude or mean-sea-level elevation.
 
 ## Repository and development
 

@@ -74,21 +74,21 @@ public final class BleReceiverActivity extends Activity {
             case "stopped": return Language.tr("已停止");
             case "disconnected": return Language.tr("未连接");
             case "connecting": return Language.tr("连接中");
-            case "negotiating_mtu": return Language.isEnglish()?"Negotiating MTU":"正在协商 MTU";
-            case "discovering": return Language.isEnglish()?"Discovering services":"正在发现服务";
-            case "subscribing": return Language.isEnglish()?"Subscribing":"正在订阅";
-            case "subscribed": return Language.isEnglish()?"Subscribed; waiting for data":"已订阅，等待数据";
-            case "receiving": return Language.isEnglish()?"Receiving":"正在接收";
-            case "bluetooth_unavailable": return Language.isEnglish()?"Bluetooth unavailable":"蓝牙不可用";
-            case "connect_failed": return Language.isEnglish()?"Connection failed":"连接失败";
-            case "connect_timeout": return Language.isEnglish()?"Connection timed out":"连接超时";
-            case "mtu_timeout": return Language.isEnglish()?"MTU negotiation timed out":"MTU 协商超时";
-            case "permission_error": return Language.isEnglish()?"Permission error":"权限错误";
-            case "discovery_failed": return Language.isEnglish()?"Service discovery failed":"服务发现失败";
-            case "discovery_timeout": return Language.isEnglish()?"Service discovery timed out":"服务发现超时";
-            case "subscription_failed": return Language.isEnglish()?"Subscription failed":"订阅失败";
-            case "unsupported": return Language.isEnglish()?"Location service unsupported":"不支持定位服务";
-            case "operation_timeout": return Language.isEnglish()?"Operation timed out":"操作超时";
+            case "negotiating_mtu": return Language.tr("正在协商 MTU");
+            case "discovering": return Language.tr("正在发现服务");
+            case "subscribing": return Language.tr("正在订阅");
+            case "subscribed": return Language.tr("已订阅，等待数据");
+            case "receiving": return Language.tr("正在接收");
+            case "bluetooth_unavailable": return Language.tr("蓝牙不可用");
+            case "connect_failed": return Language.tr("连接失败");
+            case "connect_timeout": return Language.tr("连接超时");
+            case "mtu_timeout": return Language.tr("MTU 协商超时");
+            case "permission_error": return Language.tr("权限错误");
+            case "discovery_failed": return Language.tr("服务发现失败");
+            case "discovery_timeout": return Language.tr("服务发现超时");
+            case "subscription_failed": return Language.tr("订阅失败");
+            case "unsupported": return Language.tr("不支持定位服务");
+            case "operation_timeout": return Language.tr("操作超时");
             default: return state;
         }
     }

@@ -140,7 +140,7 @@ final class McduPanel extends LinearLayout {
             case "error":state=Language.tr("连接异常");break;
             default:state=Language.tr("连接状态未知");
         }
-        bridgeHeading.setText((Language.isEnglish()?"iPad: ":"iPad：")+state+via);
+        bridgeHeading.setText((Language.isEnglish()?"iPad LINK: ":"iPad：")+state+via);
         if(phase.equals("connected")) bridgeHeading.setTextColor(GREEN);
         String issue=str(report,"issue","none"),worker=str(report,"worker_state","unknown");
         String detail;

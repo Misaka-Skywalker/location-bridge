@@ -12,7 +12,7 @@
 python3 android/helper/build.py --sdk /path/to/android-sdk --build-tools 36.0.0
 ```
 
-也可设置 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`；`JAVA_HOME` 用于选择 JDK。输出为 `android/apks/location-bridge-source-0.5.0.apk`。构建会创建本地签名密钥；请安全保存以便后续更新，切勿提交或分享。CI 中无需可安装签名 APK 时可使用 `--unsigned`。源码发布不包含 SDK、密钥和 APK。
+也可设置 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`；`JAVA_HOME` 用于选择 JDK。输出为 `android/apks/location-bridge-source-0.5.1.apk`。构建会创建本地签名密钥；请安全保存以便后续更新，切勿提交或分享。CI 中无需可安装签名 APK 时可使用 `--unsigned`。源码发布不包含 SDK、密钥和 APK。
 
 ## 准备运行环境
 

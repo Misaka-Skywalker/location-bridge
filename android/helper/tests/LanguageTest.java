@@ -8,7 +8,7 @@ public final class LanguageTest {
         require("LON".equals(LanguageCatalog.translate("经度", true)));
         require("TRK TRUE".equals(LanguageCatalog.translate("真航迹角", true)));
         require("TRK MAG".equals(LanguageCatalog.translate("磁航迹角", true)));
-        require("VAR (estimated)".equals(LanguageCatalog.translate("磁差（估算）", true)));
+        require("MAG VAR (EST)".equals(LanguageCatalog.translate("磁差（估算）", true)));
         require("unmapped".equals(LanguageCatalog.translate("unmapped", true)));
         System.out.println("LanguageTest passed");
     }

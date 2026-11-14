@@ -27,7 +27,7 @@ public final class UsbHostActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); Language.init(this);
         TextView view=new TextView(this); view.setPadding(32,48,32,32);view.setTextSize(18);
-        view.setText(Language.isEnglish()?"Checking USB connection…":"正在检查 USB 连接…");setContentView(view);
+        view.setText(Language.tr("正在检查 USB 连接…"));setContentView(view);
         if(state!=null) { finish(); return; }
         Intent intent=getIntent(); String operation=intent.getStringExtra("usb_operation"), nonce=intent.getStringExtra("usb_nonce"), signature=intent.getStringExtra("usb_auth");
         long deadline=intent.getLongExtra("usb_deadline",0);int port=intent.getIntExtra("usb_port",0);
@@ -40,7 +40,7 @@ public final class UsbHostActivity extends Activity {
             byte[] actual=AuthProtocol.decode(signature), expected=AuthProtocol.decode(auth.sign("usb\n"+operation+"\n"+deadline+"\n"+port+"\n"+nonce));
             if(!MessageDigest.isEqual(actual,expected)||!consume(nonce,deadline,now)) throw new Exception("invalid");
             new Thread(()->execute(operation,deadline,port,nonce,auth),"usb-host-request").start();
-        } catch(Exception e) { view.setText(Language.isEnglish()?"Invalid or expired request":"请求无效或已过期"); view.postDelayed(this::finish,1200); }
+        } catch(Exception e) { view.setText(Language.tr("请求无效或已过期")); view.postDelayed(this::finish,1200); }
     }
     private void execute(String operation,long deadline,int port,String nonce,AuthProtocol auth) {
         try(Socket socket=new Socket()) {
