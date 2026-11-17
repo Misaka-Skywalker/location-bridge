@@ -33,21 +33,30 @@ public final class MainActivity extends Activity {
         receiveBridgeStart(getIntent());
         getWindow().setStatusBarColor(McduPanel.BODY);
         getWindow().setNavigationBarColor(McduPanel.BODY);
-        buildPanel();
+        buildPanel(state == null ? "POS" : state.getString("instrument_page", "POS"));
         if (bridgeStart) {
             if (fineGranted()) startLocation(true);
             else requestPermissionsIfNeeded();
         }
     }
-    private void buildPanel() {
-        String currentPage=panel==null?"POS":panel.currentPage();
-        panel=new McduPanel(this,this::runPanelAction);
-        panel.selectPage(currentPage);
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putString("instrument_page", panel.currentPage());
+    }
+    private void buildPanel(String currentPage) {
         ScrollView scroll=new ScrollView(this);
-        scroll.setFillViewport(true);scroll.setBackgroundColor(McduPanel.BODY);scroll.addView(panel);
-        setContentView(scroll);
+        panel=new McduPanel(this,this::runPanelAction,()->scroll.scrollTo(0,0));
+        panel.selectPage(currentPage);
+        scroll.setFillViewport(true);
+        scroll.addView(panel);
+        LinearLayout root=new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(McduPanel.BODY);
+        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        root.addView(panel.pageBar,new LinearLayout.LayoutParams(-1,-2));
+        setContentView(root);
         // Respect status/navigation bars on devices enforcing edge-to-edge layouts.
-        scroll.setOnApplyWindowInsetsListener((view,insets)->{
+        root.setOnApplyWindowInsetsListener((view,insets)->{
             android.graphics.Insets bars=insets.getInsets(android.view.WindowInsets.Type.systemBars());
             view.setPadding(bars.left,bars.top,bars.right,bars.bottom);
             return insets;
@@ -151,7 +160,7 @@ public final class MainActivity extends Activity {
                         .setSingleChoiceItems(new String[]{"简体中文", "English"}, Language.isEnglish()?1:0, (dialog,index)->{
                             Language.set(this,index==1);
                             dialog.dismiss();
-                            buildPanel();
+                            buildPanel(panel.currentPage());
                             if (LocationService.instance != null) LocationService.instance.refreshNotification();
                             BleReceiverService.refreshNotification();
                         }).setNegativeButton(Language.tr("返回"),null).show();

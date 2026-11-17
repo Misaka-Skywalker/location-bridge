@@ -29,6 +29,23 @@ public final class ContinuousInertialTest {
         check(stationary.anchor(gps(T,0),0,.2,Double.NaN,Double.NaN,T),"reliable stationary velocity needs no track");
         advance(stationary,T,T+12*S);
         check(stationary.predict(T+12*S).speedMetersPerSecond==0,"stationary propagation remains stationary");
+        DeadReckoning fast=new DeadReckoning();
+        check(fast.anchor(gps(T,0),100,1,90,0,T),"initial high-rate anchor");
+        for(long t=T+S/200;t<=T+2*S;t+=S/200) check(fast.acceleration(t,0,0,t),"200 Hz stream");
+        check(fast.anchor(gps(T+S/2,40),100,1,90,0,T+2*S),"1.5 s delayed anchor at 200 Hz");
+        check(Math.abs(fast.lastDeviation().eastMeters-10)<.1,"retain same-time residual at 200 Hz");
+        check(Math.abs(fast.estimate(T+2*S).longitude-Math.toDegrees(190/6378137.0))<1e-8,
+                "replay every post-anchor frame");
+
+        DeadReckoning overflow=new DeadReckoning();
+        for(long t=T;t<=T+S;t+=S/1000) overflow.acceleration(t,0,0,t);
+        check(!overflow.anchor(gps(T+S/3,0),100,1,90,0,T+S),"reject calibration spanning evicted frames");
+        check(overflow.anchor(gps(T+3*S/4,0),100,1,90,0,T+S),"recent anchor still fits bounded history");
+
+        DeadReckoning reacquired=new DeadReckoning();
+        reacquired.acceleration(T,0,0,T);
+        check(reacquired.anchor(gps(T+S,0),100,1,90,0,T+S),"anchor after IMU outage");
+        check(reacquired.acceleration(T+S+S/20,0,0,T+S+S/20),"pre-anchor gap cannot invalidate fresh alignment");
         System.out.println("ContinuousInertial tests passed");
     }
 }

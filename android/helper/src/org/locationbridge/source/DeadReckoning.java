@@ -6,6 +6,9 @@ import java.util.ArrayDeque;
 final class DeadReckoning {
     private static final long S=1_000_000_000L, GNSS_FRESH=1_500_000_000L;
     private static final long MAX_GAP=250_000_000L, MAX_SENSOR_AGE=500_000_000L;
+    // Cover the delayed GNSS replay window on devices delivering up to 200 Hz.
+    private static final long HISTORY_WINDOW = 2*S;
+    private static final int MAX_HISTORY_FRAMES = 512;
     private static final double MAX_SPEED=450, MAX_ACCEL=15;
     private static final double WGS84_A=6378137.0, WGS84_E2=6.6943799901413165e-3;
 
@@ -91,9 +94,13 @@ final class DeadReckoning {
                 || Math.hypot(accelerationEast,accelerationNorth)>MAX_ACCEL) {
             invalidate("invalid_acceleration");return false;
         }
-        if (lastFrame!=0 && elapsed-lastFrame>MAX_GAP) invalidate("sensor_timing");
+        long continuityStart = active ? Math.max(lastFrame, origin.elapsed) : lastFrame;
+        if (continuityStart > 0 && elapsed - continuityStart > MAX_GAP) invalidate("sensor_timing");
         lastFrame=elapsed;history.addLast(new Frame(elapsed,accelerationEast,accelerationNorth));
-        while(history.size()>64 || elapsed-history.peekFirst().time>2*S) history.removeFirst();
+        while (history.size() > MAX_HISTORY_FRAMES || elapsed-history.peekFirst().time > HISTORY_WINDOW) {
+            Frame removed = history.removeFirst();
+            historyCutoff = Math.max(historyCutoff, removed.time);
+        }
         if(!active || origin==null) return false;
         if(elapsed<=origin.elapsed) return true;
         if(now<origin.elapsed || elapsed-lastSensor>MAX_GAP) {invalidate("sensor_timing");return false;}
@@ -117,7 +124,7 @@ final class DeadReckoning {
         if(!Double.isFinite(p[0]) || !Double.isFinite(p[1]) || Math.abs(p[0])>85) {invalidate("latitude_limit");return false;}
         latitude=p[0];longitude=p[1];velocityEast=ve;velocityNorth=vn;lastSensor=elapsed;
         positions.addLast(new Position(elapsed,latitude,longitude));
-        while(positions.size()>64 || elapsed-positions.peekFirst().time>2*S) positions.removeFirst();
+        while(positions.size()>MAX_HISTORY_FRAMES || elapsed-positions.peekFirst().time>HISTORY_WINDOW) positions.removeFirst();
         return true;
     }
     private double uncertainty() {

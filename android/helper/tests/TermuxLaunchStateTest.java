@@ -19,6 +19,12 @@ public final class TermuxLaunchStateTest {
         check(TermuxLaunchState.result(-1,0).equals("completed"),"success recognized");
         check(TermuxLaunchState.result(-1,2).equals("failed"),"nonzero failed");
         check(TermuxLaunchState.result(1,null).equals("failed"),"internal error failed");
+        check(!TermuxLaunchState.showCommand(1000,1500,10500),"expired report still supersedes earlier command");
+        check(!TermuxLaunchState.showCommand(1500,1500,1600),"report wins a timestamp tie");
+        check(TermuxLaunchState.showCommand(2000,1500,2100),"newer command visible while waiting");
+        check(TermuxLaunchState.showCommand(2000,0,16000),"show unconfirmed command briefly without a report");
+        check(!TermuxLaunchState.showCommand(2000,0,62001),"unanswered command eventually yields to link state");
+        check(!TermuxLaunchState.showCommand(2000,0,1500),"future command never wins");
         TermuxLaunchSlots slots = new TermuxLaunchSlots();
         slots.issue(TermuxCommand.USB,100,"start-token");
         slots.issue(TermuxCommand.STATUS,101,"status-token");

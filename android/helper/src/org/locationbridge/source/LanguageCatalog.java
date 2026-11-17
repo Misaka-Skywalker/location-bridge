@@ -24,22 +24,31 @@ final class LanguageCatalog {
         EN.put("操作超时", "OPERATION TIMEOUT");
         EN.put("正在检查 USB 连接…", "USB LINK CHECK…");
         EN.put("请求无效或已过期", "REQUEST INVALID OR EXPIRED");
+        EN.put("推算速度超出范围，等待 GNSS 校准", "INS SPEED LIMIT — GNSS UPDATE REQUIRED");
+        EN.put("超出惯导支持的纬度范围", "INS LATITUDE LIMIT");
+        EN.put("等待有效地磁数据", "MAG DATA WAIT");
+        EN.put("加速度数据异常，等待 GNSS 校准", "ACCEL DATA INVALID — GNSS UPDATE REQUIRED");
+        EN.put("未运行", "NOT RUNNING");
+        EN.put("已订阅定位", "SUBSCRIBED");
+        EN.put("暂无可用位置，请检查手机定位", "NO POSITION — CHECK PHONE LOCATION");
+        EN.put("位置发送失败，请在 Termux 中查看详情", "POSITION TX FAILED — CHECK TERMUX");
+        EN.put("连接失败，请在 Termux 中查看详情", "LINK FAILED — CHECK TERMUX");
         EN.put("推算状态", "INS STATE");
         EN.put("接替中", "IN USE");
         EN.put("已校准", "ALIGNED");
         EN.put("等待校准", "ALIGN WAIT");
-        EN.put("距 GNSS 校准", "GNSS UPD AGE");
+        EN.put("距上次 GNSS 校准", "GNSS UPD AGE");
         EN.put("惯导纬度", "INS LAT");
         EN.put("惯导经度", "INS LON");
         EN.put("惯导地速", "INS GS");
-        EN.put("上次校正差", "LAST POS Δ");
+        EN.put("上次校准位置差", "LAST POS Δ");
         EN.put("距上次校正", "UPDATE AGE");
         EN.put("东西差（+东）", "ΔE (+E)");
         EN.put("南北差（+北）", "ΔN (+N)");
         EN.put("运动传感器", "MOTION SENS");
         EN.put("推算时限", "TIME LIMIT");
         EN.put("不限", "UNLIMITED");
-        EN.put("校正差为校准前 INS−GNSS，同一时刻比较", "POS Δ: PRE-UPDATE INS − GNSS\nTIME-ALIGNED POSITION COMPARISON");
+        EN.put("位置差按同一时刻的惯导位置减去 GNSS 位置计算", "LAST POS Δ = INS − GNSS AT UPDATE");
         EN.put("持续推算中，实测位置可用时优先采用", "INS READY — MEASURED POS HAS PRIORITY");
 
         EN.put("请点击 Termux 通知打开终端，让命令继续执行", "Open the Termux notification to let the command continue");
@@ -68,7 +77,7 @@ final class LanguageCatalog {
         EN.put("授权完成，请再次点击连接按钮", "Permission granted; select CONNECT again");
         EN.put("iPad：命令执行失败", "iPad LINK: CMD FAILED");
         EN.put("iPad：已发送断开请求", "iPad LINK: STOP REQUESTED");
-        EN.put("iPad：等待连接状态", "iPad LINK: STATUS WAIT");
+        EN.put("iPad：等待连接报告", "iPad LINK: AWAITING REPORT");
         EN.put("请检查 Termux 应用调用设置和桥接脚本", "Check Termux external app setting and bridge installation");
         EN.put("尚未收到状态，请在 Termux 中检查启动结果", "NO LINK REPORT — CHECK TERMUX");
         EN.put("命令已结束，连接状态尚未确认", "CMD COMPLETE / LINK UNCONFIRMED");
@@ -98,7 +107,7 @@ final class LanguageCatalog {
         EN.put("加速度减重力", "ACCEL − GRAV");
         EN.put("系统线加速度", "LINEAR ACCEL");
         EN.put("环境气压", "AMBIENT PRESS");
-        EN.put("位置请求间隔", "REQ INTERVAL");
+        EN.put("定位请求间隔", "REQ INTERVAL");
         EN.put("能力按实际数据识别，未知不代表不支持\n气压不参与高度解算", "OBSERVED CAPABILITY / UNKNOWN ≠ UNSUPPORTED\nPRESSURE NOT USED FOR ALT");
 
         EN.put("位置", "POS");
@@ -167,7 +176,7 @@ final class LanguageCatalog {
         EN.put("经度", "LON");
         EN.put("高度", "ALT");
         EN.put("高度来源", "ALT SOURCE");
-        EN.put("模型误差估计", "INS EPU");
+        EN.put("惯导位置不确定度", "INS EPU");
         EN.put("水平精度", "H ACC");
         EN.put("垂直精度", "V ACC");
         EN.put("真航迹角", "TRK TRUE");

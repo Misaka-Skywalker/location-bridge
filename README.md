@@ -18,6 +18,8 @@ Version 0.5.0 adds ground speed in km/h and kts, continuous INS fallback, and an
 
 Version 0.5.1 refines the English display with concise aviation-style labels, POS/INS monitor pages and explicit action keys. `INS EPU` means the model's estimated position uncertainty; its confidence level has not been calibrated. `LAST POS Δ` is the time-aligned pre-correction INS−GNSS difference. These are distinct quantities. [Display terminology](docs/public/display-terms.md)
 
+In 0.5.2 the instrument tabs stay visible as you scroll. The INS can replay a delayed GNSS fix against two seconds of motion history at sensor rates up to 200 Hz. The link display gives a newer bridge report precedence over an earlier launch command, including after the report expires.
+
 ## Status and limits
 
 - Fixed points and simulated tracks have been observed on an iPad over Wi-Fi and USB. The tested USB path does not require a LAN. Continuous real-world movement through the full Android-to-iPad path has not yet been validated; long-duration and lock-screen operation remain unverified.
