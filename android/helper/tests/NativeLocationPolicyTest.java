@@ -71,16 +71,17 @@ public final class NativeLocationPolicyTest {
         check(!metadata.offer(new Selector.Fix("gps",0,0,1,t,false,0,1),t),"missing timestamp rejected");
         check(!metadata.offer(new Selector.Fix("gps",0,0,1,t,false,1,0),t),"missing sequence rejected");
         check(metadata.selected(t)==null,"invalid metadata does not leak into selected");
-        NativeLocationPolicy noRollback = new NativeLocationPolicy();
-        check(noRollback.offer(fix("gps",0,0,10,t),t),"rollback anchor");
-        check(noRollback.offer(fix("fused",0,0,2,t+S),t+S),"new source first");
-        check(noRollback.offer(fix("fused",0,0,2,t+2*S),t+2*S),"new source confirmed");
-        check(source(noRollback,t+2*S).equals("fused"),"new source selected");
-        check(noRollback.selected(t+8*S)==null,"older cached GPS never selected after fused expires");
-        check(noRollback.offer(fix("gps",0,0,3,t+S),t+8*S),"older source candidate can be quality checked");
-        check(noRollback.selected(t+8*S)==null,"older candidate not published");
-        check(noRollback.offer(fix("gps",0,0,3,t+8*S),t+8*S),"newer fallback accepted");
-        check(source(noRollback,t+8*S).equals("gps"),"newer fallback active");
+        NativeLocationPolicy fallback = new NativeLocationPolicy();
+        PositionPublication publication = new PositionPublication();
+        Selector.Fix network = fix("network",0,0,90,t);
+        Selector.Fix fused = fix("fused",0,0,5,t+S);
+        check(fallback.offer(fused,t+S),"fused initial");
+        check(fallback.offer(network,t+S),"lagging network stored");
+        check(publication.select(fallback.selected(t+S),null,t+S).measured==fused,"fused stays active");
+        PositionPublication.Output fallbackOutput=publication.select(fallback.selected(t+7*S),null,t+7*S);
+        check(fallbackOutput!=null && fallbackOutput.measured==network && fallbackOutput.elapsed==t,
+                "fresh network fallback keeps its actual measurement time after fused expires");
+        check(fallback.selected(t+11*S)==null,"network's own freshness window still applies");
         NativeLocationPolicy cautious=new NativeLocationPolicy();
         check(cautious.offer(fix("gps",0,0,5,t),t),"anchor for reacquisition");
         check(!cautious.offer(fix("gps",1,1,5,t+11*S),t+11*S),"first isolated");

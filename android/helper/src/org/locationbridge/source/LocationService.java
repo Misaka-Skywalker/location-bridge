@@ -326,7 +326,9 @@ public final class LocationService extends Service {
         if (height != null) heightJson=new JSONObject().put("source",height.source).put("datum","WGS84_ellipsoid")
                 .put("altitude_m",height.altitude).put("elapsed_realtime_nanos",height.elapsed)
                 .put("vertical_accuracy_m",height.verticalAccuracy==null?JSONObject.NULL:height.verticalAccuracy);
+        long anchorTime=deadReckoning.lastAnchorNanos();
         JSONObject inertial=new JSONObject().put("enabled",inertialEnabled)
+                .put("last_anchor_elapsed_realtime_nanos",inertialEnabled && anchorTime>0 ? anchorTime : JSONObject.NULL)
                 .put("maximum_horizon_s",JSONObject.NULL).put("time_limit_enabled",false)
                 .put("position",estimate==null?JSONObject.NULL:inertialPositionJson(estimate))
                 .put("last_correction",inertialEnabled?correctionJson(deadReckoning.lastDeviation()):JSONObject.NULL)
@@ -345,7 +347,7 @@ public final class LocationService extends Service {
         Selector.Fix f=out.measured;
         DeadReckoning.Prediction p=out.prediction;
         JSONObject sample=new JSONObject().put("sequence",out.sequence)
-                .put("source",f!=null?f.source:"inertial")
+                .put("source",out.source)
                 .put("latitude",f!=null?f.latitude:p.latitude).put("longitude",f!=null?f.longitude:p.longitude)
                 .put("accuracy_m",f!=null?f.accuracy:p.uncertaintyMeters)
                 .put("elapsed_realtime_nanos",out.elapsed)
@@ -412,7 +414,10 @@ public final class LocationService extends Service {
                     running = false;
                 }
                 try {
-                    String payload = (command.equals("external_snapshot") ? ExternalBleSnapshot.snapshot(this) : snapshot()).toString();
+                    JSONObject response = command.equals("external_snapshot") ? ExternalBleSnapshot.snapshot(this) : snapshot();
+                    if (command.equals("snapshot") && response.getBoolean("running"))
+                        response.put("external",BleReceiverService.positionSnapshot(this));
+                    String payload = response.toString();
                     String mac = auth.sign("response\n" + nonce + "\n" + payload);
                     JSONObject reply = new JSONObject().put("nonce", nonce).put("payload", payload).put("mac", mac);
                     byte[] data = (reply.toString() + "\n").getBytes(StandardCharsets.UTF_8);

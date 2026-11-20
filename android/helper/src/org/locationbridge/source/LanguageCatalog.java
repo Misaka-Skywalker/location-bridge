@@ -42,7 +42,8 @@ final class LanguageCatalog {
         EN.put("惯导经度", "INS LON");
         EN.put("惯导地速", "INS GS");
         EN.put("上次校准位置差", "LAST POS Δ");
-        EN.put("距上次校正", "UPDATE AGE");
+        EN.put("偏差记录龄期", "POS Δ AGE");
+        EN.put("蓝牙定位", "BLE POS");
         EN.put("东西差（+东）", "ΔE (+E)");
         EN.put("南北差（+北）", "ΔN (+N)");
         EN.put("运动传感器", "MOTION SENS");

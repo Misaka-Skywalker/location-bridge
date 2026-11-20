@@ -1,4 +1,4 @@
-"""Validation-only contract for future external GNSS adapters; never injects locations."""
+"""Shared validation for external position observations."""
 from dataclasses import dataclass
 import math
 from typing import Optional, Tuple
@@ -30,7 +30,7 @@ class ExternalFix:
 class WorkerCompatibility:
     compatible: bool
     reasons: Tuple[str, ...]
-    # No worker payload: current modes do not recognize external source types.
+    # A standalone observation does not include authenticated selection metadata.
 
 
 def _number(name, value, *, optional=False):

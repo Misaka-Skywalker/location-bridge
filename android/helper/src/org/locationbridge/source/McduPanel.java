@@ -173,7 +173,7 @@ final class McduPanel extends LinearLayout {
             if(!worker.equals("running")) detail=Language.tr("已连接，等待定位数据");
             else {
                 String src=str(report,"source","unknown");
-                String label=src.equals("gps")?"GNSS":src.equals("fused")?Language.tr("系统融合"):src.equals("network")?Language.tr("网络定位"):src.equals("inertial")?Language.tr("惯性推算"):src.equals("test")?Language.tr("测试轨迹"):Language.tr("未知来源");
+                String label=src.equals("gps")?"GNSS":src.equals("fused")?Language.tr("系统融合"):src.equals("network")?Language.tr("网络定位"):src.equals("inertial")?Language.tr("惯性推算"):src.equals("ble_lns")?Language.tr("蓝牙定位"):src.equals("test")?Language.tr("测试轨迹"):Language.tr("未知来源");
                 detail=Language.tr("最近发送 · ")+label;
                 if(!report.isNull("accuracy_m")) detail+=" · "+(src.equals("inertial")?Language.tr("模型误差 "):Language.tr("精度 "))+distance(report,"accuracy_m",false);
             }
@@ -214,12 +214,12 @@ final class McduPanel extends LinearLayout {
     private void applyPageLayout(){
         if(page.equals(layoutPage)) return;
         layoutPage=page;
-        int count=page.equals("SYS")?3:page.equals("GNSS")||page.equals("INS")?5:6;
+        int count=page.equals("SYS")?3:page.equals("INS")?4:page.equals("GNSS")?5:6;
         for(int r=0;r<rows.length;r++){
             rows[r].setVisibility(r<count?VISIBLE:GONE);
             // Keep both column headings level when one measurement uses two units.
             boolean dualUnits=(page.equals("POS") && r==5) || (page.equals("GNSS") && r==0)
-                    || ((page.equals("GNSS") || page.equals("INS")) && r==2);
+                    || (page.equals("GNSS") && r==2) || (page.equals("INS") && r==1);
             for(TextView value:values[r]) value.setMinLines(dualUnits?2:1);
         }
     }
@@ -233,7 +233,7 @@ final class McduPanel extends LinearLayout {
     private static String speed(JSONObject o,String key){return DisplayUnits.speed(o==null?Double.NaN:o.optDouble(key));}
     private static String distance(JSONObject o,String key,boolean signed){return DisplayUnits.distance(o==null?Double.NaN:o.optDouble(key),signed);}
     private String elapsed(JSONObject o,String key){
-        return o==null || !o.has(key)?"---":DisplayUnits.duration((snapshot.optLong("elapsed_realtime_nanos")-o.optLong(key))/1e9);
+        return o==null || o.isNull(key)?"---":DisplayUnits.duration((snapshot.optLong("elapsed_realtime_nanos")-o.optLong(key))/1e9);
     }
     private void render(){
         applyPageLayout();
@@ -254,8 +254,10 @@ final class McduPanel extends LinearLayout {
             navigation[index].setTextColor(selected?GREEN:WHITE);
             navigation[index].setContentDescription(PAGE_NAMES[index]+(selected?Language.tr("，当前页面"):Language.tr("页面")));
         }
-        annunciator.setText(predicted?Language.tr("● 惯性推算中"):s!=null?Language.tr("● 手机定位正常"):running?Language.tr("● 等待手机定位"):Language.tr("● 手机定位已停止"));
-        annunciator.setTextColor(s!=null&&!predicted?GREEN:AMBER);
+        if(!page.equals("INS")){
+            annunciator.setText(predicted?Language.tr("● 惯性推算中"):s!=null?Language.tr("● 手机定位正常"):running?Language.tr("● 等待手机定位"):Language.tr("● 手机定位已停止"));
+            annunciator.setTextColor(s!=null&&!predicted?GREEN:AMBER);
+        }
         String note="";
         if(page.equals("POS")){
             title.setText(Language.tr("位置总览  1/5"));
@@ -280,12 +282,15 @@ final class McduPanel extends LinearLayout {
             else if (!enabled) insState = "已停用";
             else if (active) insState = "接替中";
             else insState = ins == null ? "等待校准" : "已校准";
-            row(0,Language.tr("推算状态"),Language.tr(insState),Language.tr("距上次 GNSS 校准"),elapsed(ins,"anchor_elapsed_realtime_nanos"));
-            row(1,Language.tr("惯导纬度"),number(ins,"latitude","%+.5f"),Language.tr("惯导经度"),number(ins,"longitude","%+.5f"));
-            row(2,Language.tr("惯导位置不确定度"),distance(ins,"accuracy_m",false),Language.tr("惯导地速"),speed(ins,"speed_m_s"));
-            row(3,Language.tr("上次校准位置差"),distance(correction,"distance_m",false),Language.tr("距上次校正"),elapsed(correction,"elapsed_realtime_nanos"));
-            row(4,Language.tr("东西差（+东）"),distance(correction,"east_m",true),Language.tr("南北差（+北）"),distance(correction,"north_m",true));
-            if(running && enabled && i!=null) note=inertialReason(str(i,"reason","waiting_anchor"));
+            String reason=running && enabled && i!=null?inertialReason(str(i,"reason","waiting_anchor")):"";
+            annunciator.setText("● "+(reason.isEmpty()?Language.tr(insState):reason));
+            annunciator.setTextColor(ins!=null && !active && reason.isEmpty()?GREEN:AMBER);
+            row(0,Language.tr("纬度"),number(ins,"latitude","%+.5f"),Language.tr("经度"),number(ins,"longitude","%+.5f"));
+            row(1,Language.tr("惯导位置不确定度"),distance(ins,"accuracy_m",false),Language.tr("惯导地速"),speed(ins,"speed_m_s"));
+            row(2,Language.tr("上次校准位置差"),distance(correction,"distance_m",false),Language.tr("距上次 GNSS 校准"),elapsed(i,"last_anchor_elapsed_realtime_nanos"));
+            row(3,Language.tr("东西差（+东）"),distance(correction,"east_m",true),Language.tr("南北差（+北）"),distance(correction,"north_m",true));
+            if(correction!=null && correction.optLong("elapsed_realtime_nanos")!=i.optLong("last_anchor_elapsed_realtime_nanos"))
+                note=Language.tr("偏差记录龄期")+"  "+elapsed(correction,"elapsed_realtime_nanos");
         }else if(page.equals("SYS")){
             title.setText(Language.tr("系统状态  4/5"));
             row(0,"GPS",provider(providers,"gps"),Language.tr("系统融合"),provider(providers,"fused"));

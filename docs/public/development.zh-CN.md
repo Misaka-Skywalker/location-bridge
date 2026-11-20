@@ -12,7 +12,7 @@
 python3 android/helper/build.py --sdk /path/to/android-sdk --build-tools 36.0.0
 ```
 
-也可设置 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`；`JAVA_HOME` 用于选择 JDK。输出为 `android/apks/location-bridge-source-0.5.3.apk`。构建会创建本地签名密钥；请安全保存以便后续更新，切勿提交或分享。CI 中无需可安装签名 APK 时可使用 `--unsigned`。源码发布不包含 SDK、密钥和 APK。
+也可设置 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`；`JAVA_HOME` 用于选择 JDK。输出为 `android/apks/location-bridge-source-0.6.0.apk`。构建会创建本地签名密钥；请安全保存以便后续更新，切勿提交或分享。CI 中无需可安装签名 APK 时可使用 `--unsigned`。源码发布不包含 SDK、密钥和 APK。
 
 ## 准备运行环境
 
@@ -74,7 +74,7 @@ adb shell pm enable --user 0 com.android.mtp
 
 ## 数据流
 
-Android 定位提供器 → 助手选源和可选的有时限惯性推算 → 经认证的本地助手接口 → Termux 服务／工作进程 → pymobiledevice3 隧道和 DVT → iPad 模拟经纬度。USB 和 Wi-Fi 是不同的传输通道。助手的状态和其他测量值不代表 iPad 已接收这些数据；BLE 接收目前仅用于诊断。
+定位助手通过经认证的本机接口向 Termux 提供带采样时间的位置。融合模式依次采用手机实测位置、可用且带定位时间的蓝牙观测、经 GNSS 校准且持续有效的惯导位置。Termux 工作进程通过 USB 或 Wi-Fi 隧道向 iPad 发送所选经纬度。
 
 ## 测试与反馈
 

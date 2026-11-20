@@ -52,7 +52,9 @@ final class NativeLocationPolicy {
         return f != null && Selector.valid(f,now) && f.accuracy<=1000 && now-f.elapsed<=maxAge(f.source);
     }
     private boolean fresh(Selector.Fix f,long now) {
-        return freshInput(f,now) && (anchor==null || f==anchor || f.elapsed>anchor.elapsed);
+        // An older provider can still be a fresh fallback. Keep checking it
+        // against the newest anchor as the incumbent moves.
+        return freshInput(f,now) && (anchor==null || f==anchor || plausibleEither(anchor,f));
     }
     private Selector.Fix best(long now) {
         boolean good=false;

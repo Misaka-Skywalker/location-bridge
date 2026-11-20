@@ -184,6 +184,7 @@ final class DeadReckoning {
                 (gps.elapsed-origin.elapsed)/1_000_000.0,gps.elapsed);
     }
     synchronized Deviation lastDeviation() {return deviation;}
+    synchronized long lastAnchorNanos() {return lastAcceptedAnchor;}
     synchronized void invalidate(String reason) {
         active=false;historyCutoff=Math.max(historyCutoff,lastFrame);history.clear();positions.clear();
         status=reason==null || reason.isEmpty()?"invalidated":reason;

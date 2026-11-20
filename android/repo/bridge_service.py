@@ -227,10 +227,12 @@ def describe_worker(state, fix, now, collector=None):
     error = state.get('last_error')
     source = state.get('last_source')
     accuracy = state.get('last_accuracy_m')
-    if source not in ('gps', 'network', 'fused', 'test', 'inertial'):
+    sources = ('gps', 'network', 'fused', 'test', 'inertial', 'ble_lns')
+    if source not in sources:
         source = fix.get('source') if isinstance(fix, dict) else None
         accuracy = fix.get('accuracy_m') if isinstance(fix, dict) else None
-    if source not in ('gps', 'network', 'fused', 'test', 'inertial'): source = '未知'
+    if source not in sources: source = '未知'
+    if source == 'ble_lns': source = '外部定位'
     if isinstance(accuracy, bool) or not isinstance(accuracy, (int, float)) or not math.isfinite(accuracy) or accuracy < 0:
         accuracy_text = '未知'
     else: accuracy_text = f'{accuracy:.1f}米'
@@ -423,11 +425,14 @@ async def generate_track(session, run_id, duration, done):
 
 
 class FusionOrder:
-    # elapsedRealtime uses the same boot clock across helper process restarts.
-    def __init__(self): self.last_elapsed = 0
-    def accept(self, session_id, elapsed):
-        if type(elapsed) is not int or elapsed <= self.last_elapsed: return False
-        self.last_elapsed = elapsed
+    # Providers may report on different schedules. Keep a high-water mark for
+    # each source on the shared boot clock, including across helper restarts.
+    def __init__(self): self.last_elapsed = {}
+    def newer(self, source, elapsed):
+        return type(elapsed) is int and elapsed > self.last_elapsed.get(source, 0)
+    def accept(self, source, elapsed):
+        if not self.newer(source, elapsed): return False
+        self.last_elapsed[source] = elapsed
         return True
 
 
@@ -440,6 +445,8 @@ def helper_start_deadline():
 
 
 async def collect_fusion(session, run_id, done, helper_key, client=None):
+    from bridge_external import parse_external_bridge_fix
+
     if client is None:
         import bridge_fusion as client
     seen = set()
@@ -447,12 +454,16 @@ async def collect_fusion(session, run_id, done, helper_key, client=None):
     sequence = 0
     order = FusionOrder()
     last_revocation = None
+    current_source = None
+    current_token = None
     def revoke(reason):
-        nonlocal last_revocation
+        nonlocal last_revocation, current_source, current_token
         # Retain one tombstone until a new sample is accepted; never extend its age.
         if last_revocation != reason:
             atomic_json(session / 'fix.json', {'run_id':run_id, 'unavailable':True, 'reason':reason})
             last_revocation = reason
+        current_source = None
+        current_token = None
     while not done.is_set():
         record = {'run_id':run_id, 'helper_error':None, 'providers':{}}
         started = elapsed_time()
@@ -462,6 +473,20 @@ async def collect_fusion(session, run_id, done, helper_key, client=None):
             if isinstance(raw.get('sample'), dict) and raw['sample'].get('source') == 'inertial': poll_interval = .1
             now = elapsed_time()
             fix, token = client.parse_snapshot(raw, run_id, sequence + 1, now, now - started)
+            stamp = raw['sample']['elapsed_realtime_nanos'] if fix is not None else None
+            # Native measured fixes keep their priority. A fresh external
+            # measurement can cover gaps before resorting to dead reckoning.
+            if raw.get('running') and raw.get('external') is not None and (fix is None or fix['source'] == 'inertial'):
+                try:
+                    external_fix, external_token = parse_external_bridge_fix(
+                        raw['external'], run_id, sequence + 1, now_utc_s=time.time(), now_boottime_s=now)
+                except (ValueError, OverflowError):
+                    external_fix = None
+                if external_fix is not None:
+                    external_stamp = external_fix['elapsed_realtime_nanos']
+                    if (external_token == current_token or external_token not in seen
+                            and order.newer(external_fix['source'], external_stamp)):
+                        fix, token, stamp = external_fix, external_token, external_stamp
             # Only protocol metadata is persisted here; actual positions stay in fix.json.
             record['providers'] = raw.get('providers', {})
             selection = raw.get('selection')
@@ -476,13 +501,18 @@ async def collect_fusion(session, run_id, done, helper_key, client=None):
             if fix is None:
                 record['helper_error'] = 'no_fresh_sample' if raw.get('running') else 'stopped'
                 revoke(record['helper_error'])
-            elif token not in seen and order.accept(raw['session_id'], raw['sample']['elapsed_realtime_nanos']):
+            elif token not in seen and order.accept(fix['source'], stamp):
                 sequence += 1
                 seen.add(token)
                 recent.append(token)
                 if len(recent) > 256: seen.discard(recent.popleft())
                 atomic_json(session / 'fix.json', fix)
                 last_revocation = None
+                current_source = fix['source']
+                current_token = token
+            elif current_source != fix['source']:
+                # A superseded or withdrawn sample cannot restore forwarding.
+                revoke('no_fresh_sample')
             # Never refresh received time or sample age when polling the same sample.
         except (OSError, ValueError) as exc:
             issue = str(exc)
@@ -495,6 +525,8 @@ async def collect_fusion(session, run_id, done, helper_key, client=None):
 
 async def supervise(args, info):
     session = Path(info['session_dir']); run_id = info['run_id']; done = asyncio.Event()
+    transport = args.transport
+    if transport == 'auto': info['transport'] = 'none'
     worker = usb = collector = None
     helper_key = None
     helper_deadline = None
@@ -532,6 +564,7 @@ async def supervise(args, info):
         print(message, flush=True)
     loop = asyncio.get_running_loop()
     def request_stop(): atomic_json(session / 'stop.json', {'run_id':run_id})
+    def stopped(): return (read_json(session / 'stop.json') or {}).get('run_id') == run_id
     for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, request_stop)
     try:
         if args.mode == 'fusion':
@@ -540,7 +573,27 @@ async def supervise(args, info):
         try: await bounded('termux-wake-lock', timeout=5)
         except (OSError, asyncio.TimeoutError): set_state('无法取得唤醒锁，后台运行可能中断。')
         bind = []; env = []
-        if args.transport == 'usb':
+        devices = None
+        if transport == 'auto':
+            devices = []
+            if status_key:
+                import bridge_usb
+                status_issue = 'usb_role'; status_wakeup.set()
+                set_state('正在检查是否已连接 iPad USB。')
+                try:
+                    role = await bridge_usb.request(status_key, operation='auto', stop_requested=stopped)
+                except (OSError, ValueError, asyncio.TimeoutError):
+                    set_state('无法检查 USB 控制权。')
+                else:
+                    atomic_json(session / 'usb-role.json', role)
+                    devices = role['devices']
+            if stopped(): raise InterruptedError('已停止')
+            transport = 'usb' if devices else 'wifi'
+            info['transport'] = transport
+            atomic_json(APP / 'current.json', info)
+            status_issue = 'none'; status_wakeup.set()
+            if transport == 'wifi': set_state('未识别到 iPad USB 设备；正在通过 Wi-Fi 连接。')
+        if transport == 'usb':
             prepare_socket(sock)
             async def list_usb(timeout=15):
                 code, out, _ = await bounded('termux-usb', '-l', timeout=timeout)
@@ -548,9 +601,7 @@ async def supervise(args, info):
                 except (ValueError, UnicodeError): raise RuntimeError('无法读取 USB 设备列表。') from None
                 if code or not isinstance(devices, list): raise RuntimeError('无法读取 USB 设备列表。')
                 return devices
-            def stopped():
-                return (read_json(session / 'stop.json') or {}).get('run_id') == run_id
-            devices = await list_usb()
+            if devices is None: devices = await list_usb()
             if not devices and status_key:
                 import bridge_usb
                 status_issue = 'usb_role'; status_wakeup.set()
@@ -634,7 +685,7 @@ async def supervise(args, info):
                 raise RuntimeError('定位助手启动超时，请检查精确位置授权与系统定位。')
             if (read_json(session / 'stop.json') or {}).get('run_id') == run_id:
                 raise InterruptedError('已停止')
-        cmd = ['proot-distro','login','--isolated','--bind',f'{TASK}:/mnt/lb',*bind,'lb-python','--','env',*env,'/opt/location-bridge/bin/python','/mnt/lb/bridge_worker.py','--identifier',args.udid,'--transport',args.transport,'--session-dir',f'/mnt/lb/service/{run_id}','--run-id',run_id,'--mode',args.mode]
+        cmd = ['proot-distro','login','--isolated','--bind',f'{TASK}:/mnt/lb',*bind,'lb-python','--','env',*env,'/opt/location-bridge/bin/python','/mnt/lb/bridge_worker.py','--identifier',args.udid,'--transport',transport,'--session-dir',f'/mnt/lb/service/{run_id}','--run-id',run_id,'--mode',args.mode]
         status_issue = 'none'; status_wakeup.set()
         log_path = session / 'worker.log'
         fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -756,7 +807,7 @@ async def supervise(args, info):
 
 def main():
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest='command', required=True)
-    start = sub.add_parser('start'); start.add_argument('--mode', choices=['gps','hybrid','fusion','test'], required=True); start.add_argument('--transport', choices=['usb','wifi'], default='usb'); start.add_argument('--duration', type=int, default=90); start.add_argument('--udid', help='目标设备 UDID；默认读取本地 bridge-config.json')
+    start = sub.add_parser('start'); start.add_argument('--mode', choices=['gps','hybrid','fusion','test'], required=True); start.add_argument('--transport', choices=['auto','usb','wifi'], default='usb'); start.add_argument('--duration', type=int, default=90); start.add_argument('--udid', help='目标设备 UDID；默认读取本地 bridge-config.json')
     sub.add_parser('stop'); sub.add_parser('status'); args = parser.parse_args()
     if args.command == 'stop': stop(); return
     if args.command == 'status': status(); return
@@ -770,7 +821,8 @@ def main():
             print('相同模式已运行。' if old.get('mode') == args.mode and old.get('transport') == args.transport else '服务已运行，请先停止再切换模式。')
             return
         run_id = 'run-' + uuid.uuid4().hex; session = APP / run_id; session.mkdir(mode=0o700)
-        info = {'run_id':run_id,'session_dir':str(session),'pid':os.getpid(),'mode':args.mode,'transport':args.transport}
+        info = {'run_id':run_id,'session_dir':str(session),'pid':os.getpid(),'mode':args.mode,
+                'transport':'none' if args.transport == 'auto' else args.transport}
         atomic_json(APP / 'current.json',info)
         asyncio.run(supervise(args, info))
 

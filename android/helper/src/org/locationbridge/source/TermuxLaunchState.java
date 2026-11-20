@@ -18,7 +18,7 @@ final class TermuxLaunchState {
         return issued > 0 && now >= issued && now - issued <= COMMAND_DISPLAY_MS && issued > reportSent;
     }
     boolean busy(TermuxCommand command,long now) {
-        return command.isStart() && ("usb".equals(operation) || "wifi".equals(operation)) && "pending".equals(view(now));
+        return command.isStart() && ("auto".equals(operation) || "usb".equals(operation) || "wifi".equals(operation)) && "pending".equals(view(now));
     }
     boolean accepts(String candidate,long now) {
         return nonce != null && nonce.equals(candidate) && now>=issued && ("pending".equals(state) || "unconfirmed".equals(state));

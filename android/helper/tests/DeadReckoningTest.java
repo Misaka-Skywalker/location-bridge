@@ -24,8 +24,10 @@ public final class DeadReckoningTest {
         DeadReckoning.Prediction again=dr.predict(T+2*S+100_000_000L);
         check(again!=null && again.elapsed==p.elapsed && again.longitude==p.longitude && again.predictionAgeMillis==2000.0 && again.uncertaintyMeters==p.uncertaintyMeters,"polling does not advance position or model age");
         check(dr.predict(T+2*S+600_000_000L)==null,"stale sensor rejected");
+        check(dr.lastAnchorNanos()==T,"a missing INS solution retains its last calibration time");
         check(!dr.acceleration(T+2*S+700_000_000L,0,0,T+2*S+700_000_000L),"stale sensor invalidated until reanchor");
         check(dr.anchor(gps(T+3*S,5),300,1,90,0,T+3*S),"new anchor recovers");
+        check(dr.lastAnchorNanos()==T+3*S && dr.lastDeviation()==null,"a new anchor need not have a comparable old position");
         check(!dr.acceleration(T+3*S+300_000_000L,0,0,T+3*S+300_000_000L),"first sensor gap exceeds 250ms");
         check(!dr.anchor(gps(T+3*S,5),300,1,90,0,T+3*S),"old anchor cannot rearm");
 

@@ -2,11 +2,17 @@ package org.locationbridge.source;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import android.os.SystemClock;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
@@ -43,11 +49,30 @@ final class UsbHostController {
         if("unavailable".equals(state.result)) android.util.Log.w("LocationBridgeUsb","USB state unavailable: chars="+text.length()+", manager="+text.contains("port_manager={")+", permissionDenied="+text.contains("Permission Denial"));
         return state;
     }
+    List<String> ipadCandidates() {
+        UsbManager manager = context.getSystemService(UsbManager.class);
+        List<String> paths = new ArrayList<>();
+        if (manager == null) return paths;
+        for (UsbDevice device : manager.getDeviceList().values()) {
+            if (UsbPortState.ipadCandidate(device.getVendorId(), device.getProductId(), device.getProductName()))
+                paths.add(device.getDeviceName());
+        }
+        return paths;
+    }
+    private boolean configuredUsbAdb() {
+        Intent state = context.registerReceiver(null, new IntentFilter("android.hardware.usb.action.USB_STATE"));
+        return state != null && state.getBooleanExtra("connected", false)
+            && state.getBooleanExtra("configured", false) && state.getBooleanExtra("adb", false);
+    }
     Result run(String operation,long deadline) {
         UsbPortState state=UsbPortState.failure("unavailable"); boolean attempted=false;
         if(!ACTIVE.tryLock()) return new Result("unavailable",false,state);
         try {
             gate.check();
+            if ("auto".equals(operation)) {
+                if (!ipadCandidates().isEmpty()) return new Result("host",false,UsbPortState.enumeratedHost());
+                if (configuredUsbAdb()) return new Result("adb_active",false,state);
+            }
             if(context.checkSelfPermission(Manifest.permission.DUMP)!=PackageManager.PERMISSION_GRANTED) return new Result("permission_required",false,state);
             long limit=Math.min(deadline,SystemClock.elapsedRealtime()+14500);
             state=read(limit);
@@ -56,6 +81,7 @@ final class UsbHostController {
             String[] choices={original,"source".equals(original)?"sink":"source"};
             for(String power:choices) {
                 gate.check();
+                if ("auto".equals(operation) && configuredUsbAdb()) return new Result("adb_active",attempted,state);
                 if(!state.supportsHost(power)) continue;
                 if(SystemClock.elapsedRealtime()>=deadline || SystemClock.elapsedRealtime()>=limit) break;
                 gate.check();

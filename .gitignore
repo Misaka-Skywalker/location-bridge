@@ -50,6 +50,7 @@ __pycache__/
 !/android/repo/bridge_usb.py
 !/android/repo/bridge_status.py
 !/android/repo/bridge_worker.py
+!/android/repo/bridge_discovery.py
 !/android/repo/bridge_fusion.py
 !/android/repo/bridge_external.py
 !/android/repo/external_location.py

@@ -20,10 +20,10 @@ def make_status(info, worker, fix, *, phase, issue, now, utc_ms):
     state=worker.get('state') if fresh else 'unknown'
     if state not in ('waiting','running','stale','reconnecting','stopped','error'): state='unknown'
     source=worker.get('last_source') if fresh else 'unknown'
-    if source not in ('gps','network','fused','test','inertial'): source='unknown'
+    if source not in ('gps','network','fused','test','inertial','ble_lns'): source='unknown'
     accuracy=worker.get('last_accuracy_m') if fresh else None
     if type(accuracy) not in (float,int) or not math.isfinite(accuracy) or accuracy<0: accuracy=None
-    kind='model_estimate' if source=='inertial' and worker.get('last_accuracy_kind')=='model_estimate' else 'reported' if source in ('gps','network','fused') and accuracy is not None else 'unknown'
+    kind='model_estimate' if source=='inertial' and worker.get('last_accuracy_kind')=='model_estimate' else 'reported' if source in ('gps','network','fused','ble_lns') and accuracy is not None else 'unknown'
     sequence=worker.get('last_sequence') if fresh else None
     if type(sequence) is not int or sequence<0: sequence=None
     pending=worker.get('clear_pending') if fresh else None
@@ -51,7 +51,7 @@ def encode(status,key):
 def brief(status):
     phases={'not_started':'未启动','connecting':'连接中','connected':'已连接','reconnecting':'正在重连',
             'stopping':'正在停止','stopped':'已停止','error':'连接异常','unknown':'状态未知'}
-    sources={'gps':'GPS','network':'网络','fused':'系统融合','test':'测试轨迹','inertial':'惯性推算','unknown':'未知'}
+    sources={'gps':'GPS','network':'网络','fused':'系统融合','test':'测试轨迹','inertial':'惯性推算','ble_lns':'外部定位','unknown':'未知'}
     issues={'waiting_usb':'等待 USB 授权','usb_missing':'未找到 iPad USB 设备','waiting_helper':'等待定位助手',
             'usb_role':'正在检查 USB 主机角色','usb_permission':'USB 自动纠正尚未授权','usb_role_failed':'USB 主机角色未就绪','usb_busy':'USB 接口被占用',
             'source_unavailable':'位置不可用','worker_error':'工作进程异常','clear_unconfirmed':'清除状态未确认',
@@ -60,7 +60,8 @@ def brief(status):
     transport={'usb':'USB','wifi':'Wi-Fi'}.get(status['transport'])
     result=f"iPad {phase}" + (f'（{transport}）' if transport else '')
     source=sources.get(status['source'],'未知')
-    if status['phase']=='connected' and status['worker_state']=='running' and status['fix_age_ms'] is not None and status['fix_age_ms'] <= (500 if status['source']=='inertial' else 10000):
+    max_age={'inertial':500,'fused':5000}.get(status['source'],10000)
+    if status['phase']=='connected' and status['worker_state']=='running' and status['fix_age_ms'] is not None and status['fix_age_ms'] <= max_age:
         result+=f' · 正在发送{source}位置'
     elif status['worker_state']=='stale': result+=' · 位置已过期'
     elif status['phase']=='connected': result+=f' · 等待定位（来源：{source}）'

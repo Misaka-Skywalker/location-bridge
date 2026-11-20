@@ -16,7 +16,7 @@ The English interface uses short instrument-style labels. Page titles, status li
 | INS EPU | Estimated Position Uncertainty from the current INS model. Its confidence level is uncalibrated; this is not a validated 95% containment bound, ANP, HFOM or protection-level output. |
 | LAST POS Δ | Last pre-correction INS position minus the same-time GNSS position; GNSS uncertainty also contributes to the difference. |
 | ΔE (+E) / ΔN (+N) | Signed east / north components of that difference. |
-| GNSS UPD AGE / UPDATE AGE | Time since the relevant GNSS anchor, position sample or recorded correction, as indicated by the field. |
+| GNSS UPD AGE / POS Δ AGE | Time since the last GNSS alignment. The INS page shows a separate age for the recorded position difference only when it came from an earlier alignment. |
 | ALIGN WAIT / ALIGNED / IN USE | Waiting for a valid GNSS anchor / estimate initialized / INS selected for output. ALIGNED does not mean that the INS source is currently selected. |
 | ON / OFF | Feature enabled / disabled, not a declaration of hardware serviceability. |
 | UNKNOWN / UNAVAIL / NO DATA | State unknown / resource unavailable / measurement absent. Missing readings are shown as `---` in their usual positions. |
@@ -25,7 +25,7 @@ The English interface uses short instrument-style labels. Page titles, status li
 | FULL TRK REQ / HW CONFIRMED | GNSS full-tracking request / whether the hardware reports full tracking. An accepted request alone does not confirm operation. |
 | RX / TX | Reception / transmission. LAST TX refers to the bridge's reported last applied source, not simply the phone's currently selected source. |
 | BLE / RSSI / MTU | Bluetooth Low Energy / received signal strength indicator / maximum transmission unit. These retain their protocol meanings. |
-| DESELECT / RESELECT | Exclude / restore eligibility of the external diagnostic position while retaining its Bluetooth connection. |
+| DESELECT / RESELECT | Exclude / restore eligibility of the external BLE position while retaining its Bluetooth connection. |
 | LSK | Line-select key: the side key beside an action label. |
 
 **POS START / POS STOP** control native location collection. **ENABLE INS / DISABLE INS** change the inertial feature setting. **CONNECT / DISCONNECT** control the iPad bridge. The label describes the requested action; status is shown separately. **SETUP** opens settings.

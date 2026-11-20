@@ -32,6 +32,14 @@ class ResponseTests(unittest.TestCase):
         for raw in (b'x'*4097 + b'\n', response()[:-1], response(protocol=True), response(changed=1), response(data_role='other')):
             with self.assertRaises(ValueError): bridge_usb.decode_response(raw, KEY, NONCE)
 
+    def test_auto_requires_valid_authenticated_device_paths(self):
+        path = '/dev/bus/usb/001/002'
+        self.assertEqual(bridge_usb.decode_response(response(devices=[path]), KEY, NONCE, 'auto')['devices'], [path])
+        for raw in (response(), response(devices=['/dev/random']), response(devices=[path, path]),
+                    response(result='disconnected', devices=[path])):
+            with self.assertRaises(ValueError):
+                bridge_usb.decode_response(raw, KEY, NONCE, 'auto')
+
 
 class RequestTests(unittest.IsolatedAsyncioTestCase):
     async def test_timeout_closes_listener_and_process(self):
@@ -70,11 +78,12 @@ class SupervisorUsbTests(unittest.IsolatedAsyncioTestCase):
                 if args[:2] == ('termux-usb','-l'):
                     return 0, json.dumps(lists.pop(0) if len(lists) > 1 else lists[0]).encode(), b''
                 return 0, b'', b''
-            async def helper(*args, **kwargs):
-                calls.append(('helper',))
+            async def helper(*args, operation='prepare', **kwargs):
+                calls.append(('helper', operation))
                 return helper_result
             # Stop immediately before launching an actual daemon/worker.
             async def launch(*args, **kwargs):
+                calls.append(('launch', *args))
                 calls.append(('launch',))
                 raise RuntimeError('test launch reached')
             with mock.patch.object(service,'TASK',root), mock.patch.object(service,'APP',root), \
@@ -87,7 +96,7 @@ class SupervisorUsbTests(unittest.IsolatedAsyncioTestCase):
     async def test_empty_then_host_enumerates_once_before_daemon(self):
         calls, _ = await self.run_case([[], ['/dev/bus/usb/001/002']], {'result':'host','data_role':'host'})
         self.assertEqual(sum(c[:2] == ('termux-usb','-l') for c in calls), 2)
-        self.assertIn(('helper',), calls)
+        self.assertIn(('helper','prepare'), calls)
         self.assertIn(('launch',), calls)
 
     async def test_permission_failure_never_launches_worker(self):
@@ -97,11 +106,33 @@ class SupervisorUsbTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_wifi_does_not_request_usb_helper(self):
         calls, _ = await self.run_case([[]], {}, transport='wifi')
-        self.assertNotIn(('helper',), calls)
+        self.assertFalse(any(c[0] == 'helper' for c in calls))
         self.assertFalse(any(c[:2] == ('termux-usb','-l') for c in calls))
 
     async def test_host_without_device_never_launches(self):
         calls, marker = await self.run_case([[]], {'result':'host','data_role':'host'})
+        self.assertNotIn(('launch',), calls)
+        self.assertEqual(marker['issue'], 'usb_missing')
+
+    async def test_auto_prefers_a_usb_candidate_already_in_host_role_or_after_role_repair(self):
+        path = '/dev/bus/usb/001/002'
+        for repaired in (False, True):
+            with self.subTest(repaired=repaired):
+                calls, _ = await self.run_case([[]], {'result':'host','data_role':'host','devices':[path],
+                                                     'changed':repaired}, transport='auto')
+                self.assertIn(('helper','auto'), calls)
+                self.assertTrue(any(c[:3] == ('launch','termux-usb','-r') and c[-1] == path for c in calls))
+
+    async def test_auto_uses_wifi_when_no_target_usb_candidate_can_be_confirmed(self):
+        for role in ('disconnected','host','permission_required','switch_failed','adb_active'):
+            with self.subTest(role=role):
+                calls, _ = await self.run_case([[]], {'result':role,'data_role':'unknown','devices':[]}, transport='auto')
+                self.assertIn(('helper','auto'), calls)
+                self.assertTrue(any(c[:2] == ('launch','proot-distro') and c[c.index('--transport') + 1] == 'wifi' for c in calls))
+
+    async def test_auto_keeps_ambiguity_error_for_multiple_apple_usb_candidates(self):
+        calls, marker = await self.run_case([[]], {'result':'host','data_role':'host',
+            'devices':['/dev/bus/usb/001/002','/dev/bus/usb/001/003']}, transport='auto')
         self.assertNotIn(('launch',), calls)
         self.assertEqual(marker['issue'], 'usb_missing')
 

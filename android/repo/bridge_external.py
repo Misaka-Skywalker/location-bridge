@@ -1,5 +1,4 @@
-"""Read-only adapter for authenticated BLE observations; never injects the iPad."""
-import math
+"""Validate and normalize observations from the authenticated BLE receiver."""
 import re
 from external_location import ExternalFix, validate_fix
 
@@ -19,7 +18,7 @@ def _fix(raw):
             or sample['received_elapsed_realtime_nanos']>raw['elapsed_realtime_nanos']
             or (sample['timestamp_ms'] is not None and not _integer(sample['timestamp_ms'],1))):
         raise ValueError('invalid_external_sample')
-    return ExternalFix(source_type=sample['source_type'],receiver_id=raw['receiver_id'],
+    return ExternalFix(source_type=sample['source_type'],receiver_id=raw.get('receiver_id'),
         latitude=sample['latitude'],longitude=sample['longitude'],
         sample_time_utc_s=None if sample['timestamp_ms'] is None else sample['timestamp_ms']/1000,
         received_time_utc_s=sample['received_timestamp_ms']/1000,
@@ -59,9 +58,26 @@ def parse_external_snapshot(raw, *, now_utc_s, now_boottime_s):
     if not raw['connected'] or raw['sample'] is None: return None,None
     fix=_fix(raw)
     validate_fix(fix,now_utc_s=now_utc_s,now_monotonic_s=now_boottime_s)
-    # Receipt age alone cannot prove a receiver's fix is fresh when sample time is unknown.
-    # The contract retains unknown time; the existing worker will not inject this channel.
     age=now_boottime_s-fix.received_monotonic_s
     if fix.sample_time_utc_s is not None: age+=fix.received_time_utc_s-fix.sample_time_utc_s
     if age>10: return None,None
     return fix,(raw['receiver_id'],raw['sample']['sequence'])
+
+
+def parse_external_bridge_fix(raw, run_id, sequence, *, now_utc_s, now_boottime_s):
+    fix, token = parse_external_snapshot(raw, now_utc_s=now_utc_s, now_boottime_s=now_boottime_s)
+    # A receipt timestamp alone cannot establish the age of the underlying fix.
+    if fix is None or fix.sample_time_utc_s is None:
+        return None, None
+    sample = raw['sample']
+    observed_elapsed = sample['received_elapsed_realtime_nanos'] - (
+        sample['received_timestamp_ms'] - sample['timestamp_ms']) * 1_000_000
+    if not 0 < observed_elapsed <= raw['elapsed_realtime_nanos'] <= now_boottime_s * 1e9:
+        return None, None
+    age_ms = (now_boottime_s - observed_elapsed / 1e9) * 1000
+    if age_ms > 10000:
+        return None, None
+    return {'run_id': run_id, 'sequence': sequence, 'source': fix.source_type,
+            'latitude': fix.latitude, 'longitude': fix.longitude, 'accuracy_m': fix.accuracy_m,
+            'is_mock': fix.is_mock, 'received_monotonic': now_boottime_s, 'age_at_receive_ms': age_ms,
+            'elapsed_realtime_nanos': observed_elapsed}, (fix.source_type, *token)

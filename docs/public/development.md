@@ -12,7 +12,7 @@ The helper supports Android API 31 or newer. Install a JDK 17 or newer, Android 
 python3 android/helper/build.py --sdk /path/to/android-sdk --build-tools 36.0.0
 ```
 
-Alternatively set `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `JAVA_HOME` selects the JDK. The output is `android/apks/location-bridge-source-0.5.3.apk`. The build creates a local signing key; retain it securely for upgrades and never commit or share it. Use `--unsigned` for CI builds that do not need an installable signed APK. SDKs, keys and APKs are not shipped in this source release.
+Alternatively set `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `JAVA_HOME` selects the JDK. The output is `android/apks/location-bridge-source-0.6.0.apk`. The build creates a local signing key; retain it securely for upgrades and never commit or share it. Use `--unsigned` for CI builds that do not need an installable signed APK. SDKs, keys and APKs are not shipped in this source release.
 
 ## Runtime preparation
 
@@ -74,7 +74,7 @@ A prior helper 0.3.1 device test changed USB data role from device to host while
 
 ## Data flow
 
-Android location providers → helper selection and optional continuous inertial estimate → authenticated local helper interface → Termux service/worker → pymobiledevice3 tunnel and DVT → iPad simulated latitude/longitude. USB and Wi-Fi are separate transport paths. Helper status and additional measurements do not imply that the iPad receives those measurements. BLE reception has a diagnostic path only.
+The Android helper supplies timestamped, authenticated position snapshots to Termux. Fusion mode prefers a measured Android position, then an eligible BLE observation with a valid fix time, then a fresh GNSS-initialized inertial estimate. The Termux worker sends the selected latitude and longitude over the USB or Wi-Fi tunnel.
 
 ## Safe testing and reporting
 

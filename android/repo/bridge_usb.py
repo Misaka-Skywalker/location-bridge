@@ -15,7 +15,7 @@ ROLES = {'host', 'device', 'none', 'unknown'}
 POWER_ROLES = {'sink', 'source', 'none', 'unknown'}
 
 
-def decode_response(data, key, nonce):
+def decode_response(data, key, nonce, operation='prepare'):
     def unique(pairs):
         result = {}
         for name, value in pairs:
@@ -34,11 +34,23 @@ def decode_response(data, key, nonce):
         mac = hmac.new(key, ('usb_result\n' + nonce + '\n' + payload).encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(mac, envelope['mac']): raise ValueError('invalid mac')
         value = json.loads(payload, object_pairs_hook=unique)
-        if (not isinstance(value, dict) or set(value) != {'protocol', 'result', 'changed', 'data_role', 'power_role'}
+        fields = {'protocol', 'result', 'changed', 'data_role', 'power_role'}
+        results = RESULTS
+        if operation == 'auto':
+            fields.add('devices')
+            results = RESULTS | {'adb_active'}
+        if (not isinstance(value, dict) or set(value) != fields
                 or type(value['protocol']) is not int or value['protocol'] != 1
-                or value['result'] not in RESULTS or type(value['changed']) is not bool
+                or value['result'] not in results or type(value['changed']) is not bool
                 or value['data_role'] not in ROLES or value['power_role'] not in POWER_ROLES):
             raise ValueError('invalid payload')
+        if operation == 'auto':
+            devices = value['devices']
+            if (not isinstance(devices, list) or len(devices) > 32
+                    or any(not isinstance(path, str) or not re.fullmatch(r'/dev/bus/usb/[0-9]{1,5}/[0-9]{1,5}', path) for path in devices)
+                    or len(devices) != len(set(devices))
+                    or devices and (value['result'] != 'host' or value['data_role'] != 'host')):
+                raise ValueError('invalid paths')
         return value
     except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
         raise ValueError('invalid USB helper response') from None
@@ -46,7 +58,7 @@ def decode_response(data, key, nonce):
 
 async def request(key_hex, operation='prepare', stop_requested=lambda: False, timeout=22):
     if not isinstance(key_hex, str) or not re.fullmatch(r'[0-9a-f]{64}', key_hex): raise ValueError('invalid key')
-    if operation not in ('prepare', 'inspect'): raise ValueError('invalid operation')
+    if operation not in ('prepare', 'inspect', 'auto'): raise ValueError('invalid operation')
     key = bytes.fromhex(key_hex)
     nonce = secrets.token_hex(32)
     loop = asyncio.get_running_loop()
@@ -62,7 +74,7 @@ async def request(key_hex, operation='prepare', stop_requested=lambda: False, ti
         clients.add(task)
         try:
             raw = await asyncio.wait_for(reader.readline(), max(0, end - loop.time()))
-            value = decode_response(raw, key, nonce)
+            value = decode_response(raw, key, nonce, operation)
             if not result.done(): result.set_result(value)
         except (ValueError, asyncio.TimeoutError, OSError):
             pass

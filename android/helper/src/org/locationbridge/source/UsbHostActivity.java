@@ -12,8 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.json.JSONArray;
 
 /** Authenticated one-shot USB inspection/repair, with a loopback result channel. */
 public final class UsbHostActivity extends Activity {
@@ -35,7 +37,7 @@ public final class UsbHostActivity extends Activity {
         String key=getSharedPreferences(MainActivity.PREFS,MODE_PRIVATE).getString(MainActivity.TOKEN,null);
         long now=SystemClock.elapsedRealtime();
         try {
-            if(!("inspect".equals(operation)||"prepare".equals(operation))||deadline<=now||deadline-now>20000||port<1024||port>65535||nonce==null||!nonce.matches("[0-9a-f]{64}")||signature==null||!signature.matches("[0-9a-f]{64}")||!AuthProtocol.isHex64(key)) throw new Exception("invalid");
+            if(!("inspect".equals(operation)||"prepare".equals(operation)||"auto".equals(operation))||deadline<=now||deadline-now>20000||port<1024||port>65535||nonce==null||!nonce.matches("[0-9a-f]{64}")||signature==null||!signature.matches("[0-9a-f]{64}")||!AuthProtocol.isHex64(key)) throw new Exception("invalid");
             AuthProtocol auth=new AuthProtocol(key);
             byte[] actual=AuthProtocol.decode(signature), expected=AuthProtocol.decode(auth.sign("usb\n"+operation+"\n"+deadline+"\n"+port+"\n"+nonce));
             if(!MessageDigest.isEqual(actual,expected)||!consume(nonce,deadline,now)) throw new Exception("invalid");
@@ -55,9 +57,23 @@ public final class UsbHostActivity extends Activity {
             },"usb-callback-watch");
             watcher.setDaemon(true);
             watcher.start();
-            UsbHostController.Result result=new UsbHostController(getApplicationContext(),cancelled::get).run(operation,deadline);
+            UsbHostController controller=new UsbHostController(getApplicationContext(),cancelled::get);
+            UsbHostController.Result result=controller.run(operation,deadline);
             if(cancelled.get()) return;
             JSONObject data=new JSONObject().put("protocol",1).put("result",result.result).put("changed",result.changed).put("data_role",result.data).put("power_role",result.power);
+            if ("auto".equals(operation)) {
+                List<String> devices=List.of();
+                if ("host".equals(result.result)) {
+                    devices=controller.ipadCandidates();
+                    long settle=Math.min(deadline-300,SystemClock.elapsedRealtime()+5000);
+                    while (devices.isEmpty() && !cancelled.get() && SystemClock.elapsedRealtime()<settle) {
+                        Thread.sleep(200);
+                        devices=controller.ipadCandidates();
+                    }
+                }
+                if(cancelled.get()) return;
+                data.put("devices",new JSONArray(devices));
+            }
             String payload=data.toString();
             JSONObject envelope=new JSONObject().put("nonce",nonce).put("payload",payload).put("mac",auth.sign("usb_result\n"+nonce+"\n"+payload));
             socket.getOutputStream().write((envelope.toString()+"\n").getBytes(StandardCharsets.UTF_8)); socket.getOutputStream().flush();

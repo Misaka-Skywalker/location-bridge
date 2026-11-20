@@ -7,12 +7,14 @@ import logging
 import math
 import os
 import signal
+import sys
 import tempfile
 import time
 from importlib.metadata import version
 from pathlib import Path
 
 MAX_AGE = 10.0
+SOURCE_MAX_AGE = {'fused': 5.0, 'inertial': .5}
 
 
 def elapsed_time():
@@ -23,20 +25,32 @@ def elapsed_time():
 
 
 def validate_fix(data, run_id, mode, now):
-    sources = {'gps': ('gps',), 'test': ('test',), 'hybrid': ('gps', 'network'), 'fusion': ('fused','gps','network','inertial')}
+    sources = {'gps': ('gps',), 'test': ('test',), 'hybrid': ('gps', 'network'),
+               'fusion': ('fused', 'gps', 'network', 'inertial', 'ble_lns')}
     if not isinstance(data, dict) or data.get('run_id') != run_id or data.get('source') not in sources.get(mode, ()):
         return None
     sequence = data.get('sequence')
     if type(sequence) is not int or sequence < 0:
         return None
-    fields = ('latitude', 'longitude', 'accuracy_m', 'received_monotonic', 'age_at_receive_ms')
+    fields = ('latitude', 'longitude', 'received_monotonic', 'age_at_receive_ms')
     values = [data.get(key) for key in fields]
     if any(type(x) not in (int, float) or not math.isfinite(x) for x in values):
         return None
-    lat, lon, accuracy, received, age_ms = values
-    if not (-90 <= lat <= 90 and -180 <= lon <= 180 and accuracy >= 0 and age_ms >= 0 and received <= now):
+    lat, lon, received, age_ms = values
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180 and age_ms >= 0 and received <= now):
         return None
-    if data['source'] == 'inertial':
+    source = data['source']
+    accuracy = data.get('accuracy_m')
+    if not (source == 'ble_lns' and 'accuracy_m' in data and accuracy is None):
+        if type(accuracy) not in (int, float) or not math.isfinite(accuracy) or accuracy < 0:
+            return None
+    if source == 'ble_lns':
+        sample = data.get('elapsed_realtime_nanos')
+        if (type(sample) is not int or not 0 < sample <= received * 1e9
+                or now - sample / 1e9 > MAX_AGE or 'is_mock' not in data
+                or data['is_mock'] is not False and data['is_mock'] is not None):
+            return None
+    if source == 'inertial':
         anchor = data.get('anchor_elapsed_realtime_nanos')
         sample = data.get('elapsed_realtime_nanos')
         predicted = data.get('prediction_age_ms')
@@ -49,7 +63,7 @@ def validate_fix(data, run_id, mode, now):
         if (sample / 1e9 > received or now - sample / 1e9 > .5
                 or now - received + age_ms / 1000 > .500000001):
             return None
-    elif now - received + age_ms / 1000 > MAX_AGE:
+    elif now - received + age_ms / 1000 > SOURCE_MAX_AGE.get(source, MAX_AGE):
         return None
     return sequence, lat, lon
 
@@ -236,12 +250,13 @@ async def run_worker(args):
                                 await clear(location)
                                 status.write(state='stale')
                             else:
-                                set_timeout = 10.0
-                                if raw_fix['source'] == 'inertial':
-                                    now = elapsed_time()
-                                    set_timeout = min(.5 - (now - raw_fix['elapsed_realtime_nanos']/1e9),
-                                                      8 - (now - raw_fix['anchor_elapsed_realtime_nanos']/1e9),
-                                                      .5 - (now - raw_fix['received_monotonic'] + raw_fix['age_at_receive_ms']/1000))
+                                now = elapsed_time()
+                                max_age = SOURCE_MAX_AGE.get(raw_fix['source'], MAX_AGE)
+                                aged = now - raw_fix['received_monotonic'] + raw_fix['age_at_receive_ms'] / 1000
+                                set_timeout = max_age - aged
+                                if raw_fix['source'] in ('inertial', 'ble_lns'):
+                                    observed_age = now - raw_fix['elapsed_realtime_nanos'] / 1e9
+                                    set_timeout = min(set_timeout, max_age - observed_age)
                                 if set_timeout <= 0:
                                     await clear(location)
                                     status.write(state='stale')
@@ -251,7 +266,7 @@ async def run_worker(args):
                                              last_accuracy_m=raw_fix['accuracy_m'],
                                              last_accuracy_kind=raw_fix.get('accuracy_kind'),
                                              last_prediction_age_ms=raw_fix.get('prediction_age_ms'), state='running')
-                                if raw_fix['source'] == 'inertial' and validate_fix(raw_fix, args.run_id, args.mode, elapsed_time()) is None:
+                                if validate_fix(raw_fix, args.run_id, args.mode, elapsed_time()) is None:
                                     await clear(location)
                                     status.write(state='stale')
                                 backoff = 2
@@ -323,6 +338,9 @@ def main():
     if version('pymobiledevice3') != '11.52.1':
         parser.error('requires pymobiledevice3 11.52.1')
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    if args.transport == 'wifi' and sys.platform == 'linux':
+        import bridge_discovery
+        bridge_discovery.configure()
     asyncio.run(run_worker(args))
 
 

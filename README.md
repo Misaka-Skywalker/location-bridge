@@ -22,12 +22,14 @@ In 0.5.2 the instrument tabs stay visible as you scroll. The INS can replay a de
 
 In 0.5.3 the INS page groups position and calibration data in five fixed rows. The altitude label includes its WGS84 datum, with metres and feet displayed together. After pairing, the key fingerprint is available under **SETUP → TERMUX PAIRING**.
 
+In 0.6.0 **CONNECT** selects USB or Wi-Fi at startup. Wi-Fi can use the phone hotspot when the paired iPad joins it. The INS page shows its state once and keeps four fixed rows for readings.
+
 ## Status and limits
 
 - Fixed points and simulated tracks have been observed on an iPad over Wi-Fi and USB. The tested USB path does not require a LAN. Continuous real-world movement through the full Android-to-iPad path has not yet been validated; long-duration and lock-screen operation remain unverified.
 - The current iPad DVT simulation call sends **latitude and longitude only**. Altitude, accuracy, ground speed, true/magnetic track and magnetic variation are helper-side display or metadata; they are not delivered to the iPad by this path.
 - The experimental GNSS-assisted inertial estimate has no elapsed-time cutoff. It is used only when no measured position remains usable, and still requires an initial GNSS anchor and uninterrupted valid motion data. Model uncertainty grows without an automatic accuracy cutoff; it is not measured drift or an integrity guarantee.
-- iPhone-to-Android BLE reception has been demonstrated for diagnostics, but the external BLE source is not integrated into the production iPad worker. An unsigned iOS accuracy experiment is outside this release.
+- Fusion mode first uses a valid measured Android location (GNSS, fused or network). An eligible, timestamped BLE fix can take over before INS. Manual deselection and the static TXT gate also apply to transmission. BLE accuracy stays unknown when it cannot be matched to that fix.
 - The helper can switch between English and 简体中文 in **SETUP → Language / 语言**. The preference persists without stopping the service.
 - `GS` is ground speed; `ALT` is altitude; `TRK TRUE` and `TRK MAG` are movement tracks relative to true and magnetic north; `MAG VAR` is magnetic variation. Track is the direction of motion, not device heading. Android altitude is WGS84 ellipsoid height, not pressure altitude or mean-sea-level elevation.
 

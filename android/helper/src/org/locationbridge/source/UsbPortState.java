@@ -2,6 +2,7 @@ package org.locationbridge.source;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -13,6 +14,12 @@ final class UsbPortState {
         this.result=result; this.id=id; this.power=power; this.data=data; this.sourceHost=sourceHost; this.sinkHost=sinkHost;
     }
     static UsbPortState failure(String result) { return new UsbPortState(result,null,"unknown","unknown",false,false); }
+    static UsbPortState enumeratedHost() { return new UsbPortState("host",null,"unknown","host",false,false); }
+    static boolean ipadCandidate(int vendor, int product, String productName) {
+        if (vendor != 0x05ac || product < 0x1290 || product > 0x12af) return false;
+        String name = productName == null ? "" : productName.toLowerCase(Locale.ROOT);
+        return !name.startsWith("iphone") && !name.startsWith("ipod") && !name.startsWith("apple tv");
+    }
     static String field(String text, String name) {
         Matcher m=Pattern.compile("(?<![A-Za-z0-9_])"+Pattern.quote(name)+"=([^\\s,}\\]]+)").matcher(text);
         if (!m.find()) return null;

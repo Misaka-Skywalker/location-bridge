@@ -19,7 +19,10 @@ public final class PositionPublicationTest {
         check(publication.select(gps,prediction,t+2*S).measured==gps,"valid measured source wins over INS");
         PositionPublication.Output estimated=publication.select(null,prediction,t+2*S);
         check(estimated.prediction!=null && estimated.sequence>first.sequence,"prediction takes over without measured source");
-        check(publication.select(fix(t+S),null,t+2*S)==null,"reacquisition cannot publish older time");
+        Selector.Fix recovered=fix(t+S);
+        PositionPublication.Output measured=publication.select(recovered,null,t+2*S);
+        check(measured!=null && measured.measured==recovered && measured.elapsed==t+S
+                && measured.sequence>estimated.sequence,"delayed measured fix takes over from newer prediction");
         check(publication.select(gps,null,t+3*S)==null,"expiry never revives older raw fix");
         Selector.Fix returned=fix(t+3*S);
         check(publication.select(returned,null,t+3*S).measured==returned,"newer GNSS takes over");

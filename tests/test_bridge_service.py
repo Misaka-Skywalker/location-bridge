@@ -184,14 +184,14 @@ while not (p/'stop.json').exists(): time.sleep(.05)
 if __name__ == '__main__': unittest.main()
 
 class FusionOrderingTests(unittest.TestCase):
-    def test_cross_provider_old_sample_is_not_forwarded(self):
+    def test_ordering_is_per_source_and_survives_helper_restart(self):
         gate = service.FusionOrder()
-        self.assertTrue(gate.accept('a', 100))
-        self.assertFalse(gate.accept('a', 99))
-        self.assertFalse(gate.accept('a', 100))
-        self.assertTrue(gate.accept('a', 101))
-        self.assertFalse(gate.accept('b', 99))
-        self.assertTrue(gate.accept('b', 102))
+        self.assertTrue(gate.accept('gps', 100))
+        self.assertFalse(gate.accept('gps', 99))
+        self.assertFalse(gate.accept('gps', 100))
+        self.assertTrue(gate.accept('gps', 101))
+        self.assertTrue(gate.accept('fused', 99))
+        self.assertTrue(gate.accept('fused', 102))
 
     def test_lease_deadline_uses_boottime(self):
         import unittest.mock
@@ -199,13 +199,13 @@ class FusionOrderingTests(unittest.TestCase):
             self.assertEqual(service.helper_start_deadline(), 9000)
 
 class FusionCollectorIntegration(unittest.IsolatedAsyncioTestCase):
-    async def test_older_unseen_provider_sample_is_not_written(self):
+    async def test_older_sample_from_same_provider_is_not_written(self):
         import asyncio
         class Client:
             count = 0
             def request_snapshot(self, uid):
                 self.count += 1
-                samples = [(100,'fused'), (99,'gps'), (101,'gps')]
+                samples = [(100,'fused'), (99,'fused'), (101,'gps')]
                 stamp, source = samples[min(self.count - 1, 2)]
                 return {'running':True, 'session_id':'same', 'sample':{'elapsed_realtime_nanos':stamp}, 'providers':{}, 'source':source}
             def parse_snapshot(self, raw, run_id, sequence, now, rtt):
@@ -222,6 +222,93 @@ class FusionCollectorIntegration(unittest.IsolatedAsyncioTestCase):
                 new = json.loads((path/'fix.json').read_text())
                 self.assertEqual(new['sequence'],2)
                 self.assertEqual(new['source'],'gps')
+            finally:
+                done.set()
+                await task
+
+    async def test_helper_selected_sources_reach_worker_input(self):
+        import asyncio
+        from unittest.mock import patch
+
+        import bridge_fusion
+        from bridge_worker import read_fix, validate_fix
+
+        started = service.elapsed_time()
+        ticks = int(started * 1e9)
+        utc_ms = int(time.time() * 1000)
+        session_id = '1c68b7a8-506c-4dc9-a137-810a20b8e5c2'
+        stage = 'gps'
+        stage_calls = {}
+        def read_snapshot(key):
+            phase = stage
+            stage_calls[phase] = stage_calls.get(phase, 0) + 1
+            now = int(service.elapsed_time() * 1e9)
+            providers = {name: {'available': True, 'enabled': True, 'error': None}
+                         for name in ('gps', 'fused', 'network')}
+            sample = None
+            measured = {'gps': (1, ticks, 1, 5), 'fused': (2, ticks - 300_000_000, 2, 20),
+                        'network': (3, ticks - 600_000_000, 3, 90)}
+            if phase in measured:
+                seq, stamp, latitude, accuracy = measured[phase]
+                sample = {'sequence': seq, 'elapsed_realtime_nanos': stamp, 'source': phase,
+                          'latitude': latitude, 'longitude': 104, 'accuracy_m': accuracy,
+                          'timestamp_ms': utc_ms, 'is_mock': False, 'coordinate_system': 'WGS84'}
+            elif phase == 'inertial':
+                sample = {'sequence': 4, 'elapsed_realtime_nanos': now, 'source': 'inertial',
+                          'latitude': 5, 'longitude': 104, 'accuracy_m': 42,
+                          'timestamp_ms': utc_ms, 'is_mock': False, 'coordinate_system': 'WGS84',
+                          'accuracy_kind': 'model_estimate', 'anchor_source': 'gps',
+                          'anchor_elapsed_realtime_nanos': now - 9_000_000_000, 'prediction_age_ms': 9000}
+            reason = {'manual': 'manual_excluded', 'txt': 'static_txt'}.get(phase, 'eligible')
+            sample_time = None if phase == 'no_time' else utc_ms - (10_000 if phase == 'stale' else 200)
+            external = {'protocol': 1, 'kind': 'external_gnss', 'state': 'receiving', 'connected': True,
+                        'receiver_id': 'selected-receiver', 'elapsed_realtime_nanos': now,
+                        'selection': {'eligible': reason == 'eligible', 'reason': reason,
+                                      'manual_excluded': phase == 'manual',
+                                      'waiting_after_txt': phase == 'txt'},
+                        'sample': {'source_type': 'ble_lns', 'sequence': 7, 'latitude': 4, 'longitude': 104,
+                                   'coordinate_system': 'WGS84', 'position_status': 1, 'accuracy_m': None,
+                                   'is_mock': None, 'timestamp_ms': sample_time,
+                                   'received_timestamp_ms': utc_ms, 'received_elapsed_realtime_nanos': ticks,
+                                   'altitude_m': None, 'altitude_datum': None, 'speed_m_s': None,
+                                   'course_deg': None},
+                        'quality': {'association': 'unverified', 'horizontal_error_m': 1}}
+            return {'protocol': 1, 'session_id': session_id, 'running': phase != 'stopped',
+                    'elapsed_realtime_nanos': now, 'providers': providers, 'sample': sample,
+                    'external': external}
+
+        async def until(predicate):
+            async with asyncio.timeout(3):
+                while not predicate():
+                    await asyncio.sleep(.01)
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(bridge_fusion, 'request_snapshot', read_snapshot):
+            path = Path(tmp)
+            done = asyncio.Event()
+            task = asyncio.create_task(service.collect_fusion(path, 'run', done, 'key'))
+            try:
+                for expected_sequence, (stage, source, latitude, accuracy) in enumerate(
+                        [('gps', 'gps', 1, 5), ('fused', 'fused', 2, 20), ('network', 'network', 3, 90),
+                         ('ble', 'ble_lns', 4, None)], 1):
+                    await until(lambda: (read_fix(path / 'fix.json')[1] or {}).get('source') == source)
+                    _, fix = read_fix(path / 'fix.json')
+                    self.assertEqual(validate_fix(fix, 'run', 'fusion', service.elapsed_time()),
+                                     (expected_sequence, latitude, 104))
+                    self.assertEqual(fix['accuracy_m'], accuracy)
+                saved = fix
+                await until(lambda: stage_calls.get('ble', 0) >= 3)
+                self.assertEqual(read_fix(path / 'fix.json')[1], saved)
+                for stage in ('manual', 'replay', 'txt', 'no_time', 'stale'):
+                    await until(lambda: stage_calls.get(stage, 0) >= 2)
+                    _, fix = read_fix(path / 'fix.json')
+                    self.assertTrue(fix.get('unavailable'))
+                    self.assertIsNone(validate_fix(fix, 'run', 'fusion', service.elapsed_time()))
+                stage = 'inertial'
+                await until(lambda: (read_fix(path / 'fix.json')[1] or {}).get('source') == 'inertial')
+                _, fix = read_fix(path / 'fix.json')
+                self.assertEqual(validate_fix(fix, 'run', 'fusion', service.elapsed_time()), (5, 5, 104))
+                stage = 'stopped'
+                await until(lambda: (read_fix(path / 'fix.json')[1] or {}).get('reason') == 'stopped')
             finally:
                 done.set()
                 await task

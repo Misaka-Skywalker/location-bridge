@@ -20,6 +20,11 @@ public final class UsbPortStateTest {
         check(!UsbPortState.parse(wrap(PORT.replace("can_change_data_role=true","can_change_data_role=false"))).supportsHost("sink"));
         check(UsbPortState.parse(wrap(PORT).replace("usb_ports={","usb_ports={port={")).result.equals("unavailable"));
         check(UsbPortState.parse("Permission Denial").result.equals("unavailable"));
+        check(UsbPortState.ipadCandidate(0x05ac,0x12ab,"iPad"));
+        check(UsbPortState.ipadCandidate(0x05ac,0x12ab,null));
+        check(!UsbPortState.ipadCandidate(0x05ac,0x12a8,"iPhone"));
+        check(!UsbPortState.ipadCandidate(0x05ac,0x8600,"Apple T2 Controller"));
+        check(!UsbPortState.ipadCandidate(0x1234,0x12ab,"Unrelated USB device"));
         System.out.println("UsbPortStateTest passed");
     }
 }

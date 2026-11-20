@@ -24,6 +24,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -36,7 +37,7 @@ import java.util.Map;
 import java.util.Locale;
 import java.util.UUID;
 
-/** Diagnostic BLE receiver. GATT lifecycle and queue are serialized on the main looper. */
+/** Selected BLE position receiver. GATT lifecycle and queue are serialized on the main looper. */
 public final class BleReceiverService extends Service {
     static final String CONNECT = "org.locationbridge.source.BLE_CONNECT";
     static final String STOP = "org.locationbridge.source.BLE_STOP";
@@ -319,20 +320,39 @@ public final class BleReceiverService extends Service {
     }
     /** Hook for the LNS decoder; receives data only from the selected device's known LNS characteristics. */
     void handleValue(UUID characteristic, byte[] value) { }
+    private JSONObject positionSnapshotLocked() throws JSONException {
+        long now=SystemClock.elapsedRealtimeNanos(), wall=System.currentTimeMillis();
+        String reason=useGate.manualExcluded() ? "manual_excluded" : !connected ? "disconnected" : useGate.reason(now,wall);
+        ExternalPositionStore.Candidate candidate=connected ? positions.selected(now,wall) : null;
+        return positionEnvelope(state,connected,receiverId,now,reason,useGate.manualExcluded(),useGate.waitingAfterTxt(),
+                candidate == null ? JSONObject.NULL : ExternalBleSnapshot.sample(candidate));
+    }
+    private static JSONObject positionEnvelope(String state,boolean connected,String receiver,long now,String reason,
+                                               boolean excluded,boolean waiting,Object sample) throws JSONException {
+        return new JSONObject().put("protocol",1).put("kind","external_gnss").put("state",state)
+                .put("elapsed_realtime_nanos",now).put("connected",connected)
+                .put("receiver_id",receiver == null ? JSONObject.NULL : receiver)
+                .put("selection",new JSONObject().put("eligible","eligible".equals(reason)).put("reason",reason)
+                        .put("manual_excluded",excluded).put("waiting_after_txt",waiting))
+                .put("sample",sample);
+    }
+    static JSONObject positionSnapshot(Context context) {
+        BleReceiverService service=instance;
+        if (service!=null) synchronized(service.dataLock) {
+            try { return service.positionSnapshotLocked(); }
+            catch (JSONException ignored) { }
+        }
+        return emptyPositionSnapshot(context);
+    }
     public static JSONObject snapshot(Context context) {
         BleReceiverService service=instance;
         if (service == null) return emptySnapshot(context);
         synchronized(service.dataLock) {
             try {
-                String reason=service.useGate.manualExcluded() ? "manual_excluded" : !service.connected ? "disconnected"
-                        : service.useGate.reason(SystemClock.elapsedRealtimeNanos(),System.currentTimeMillis());
-                ExternalPositionStore.Candidate candidate=service.connected ? service.positions.selected(SystemClock.elapsedRealtimeNanos(),System.currentTimeMillis()) : null;
-                return new JSONObject().put("protocol",1).put("kind","external_gnss").put("state",service.state)
-                        .put("selection",new JSONObject().put("eligible","eligible".equals(reason)).put("reason",reason)
-                            .put("manual_excluded",service.useGate.manualExcluded()).put("waiting_after_txt",service.useGate.waitingAfterTxt()))
-                        .put("txt_packets",service.txtPackets).put("last_txt",service.lastTxt == null ? JSONObject.NULL : service.lastTxt)
+                return service.positionSnapshotLocked().put("txt_packets",service.txtPackets)
+                        .put("last_txt",service.lastTxt == null ? JSONObject.NULL : service.lastTxt)
                         .put("txt_received_elapsed_nanos",service.txtReceivedElapsedNanos == 0 ? JSONObject.NULL : service.txtReceivedElapsedNanos)
-                        .put("connected",service.connected).put("mtu",service.negotiatedMtu).put("receiver_id",service.receiverId == null ? JSONObject.NULL : service.receiverId)
+                        .put("mtu",service.negotiatedMtu)
                         .put("services",new JSONArray(service.services.toString())).put("inventory_truncated",service.inventoryTruncated).put("subscription_failed",service.subscriptionFailed).put("packets",service.packets)
                         .put("last_location_hex", service.lastLocationHex == null ? JSONObject.NULL : service.lastLocationHex)
                         .put("location_sequence",service.locationSequence)
@@ -346,22 +366,25 @@ public final class BleReceiverService extends Service {
                         .put("quality_received_elapsed_nanos",service.qualityReceivedElapsedNanos == 0 ? JSONObject.NULL : service.qualityReceivedElapsedNanos)
                         .put("last_notification_elapsed_nanos",service.lastNotification == 0 ? JSONObject.NULL : service.lastNotification)
                         .put("last_characteristic",service.lastCharacteristic == null ? JSONObject.NULL : service.lastCharacteristic)
-                        .put("last_payload_hex",service.lastPayload == null ? JSONObject.NULL : service.lastPayload)
-                        .put("sample",candidate == null ? JSONObject.NULL : ExternalBleSnapshot.sample(candidate));
+                        .put("last_payload_hex",service.lastPayload == null ? JSONObject.NULL : service.lastPayload);
             } catch (Exception ignored) { return emptySnapshot(context); }
         }
     }
+    private static JSONObject emptyPositionSnapshot(Context context) {
+        boolean excluded=manualExcluded(context);
+        try { return positionEnvelope("stopped",false,null,SystemClock.elapsedRealtimeNanos(),
+                excluded ? "manual_excluded" : "disconnected",excluded,false,JSONObject.NULL); }
+        catch (JSONException impossible) { return new JSONObject(); }
+    }
     private static JSONObject emptySnapshot(Context context) {
-        try { return new JSONObject().put("protocol",1).put("kind","external_gnss").put("state","stopped").put("connected",false)
-                .put("selection",new JSONObject().put("eligible",false).put("reason",manualExcluded(context) ? "manual_excluded" : "disconnected")
-                    .put("manual_excluded",manualExcluded(context)).put("waiting_after_txt",false))
+        try { return emptyPositionSnapshot(context)
                 .put("txt_packets",0).put("last_txt",JSONObject.NULL).put("txt_received_elapsed_nanos",JSONObject.NULL)
-                .put("receiver_id",JSONObject.NULL).put("services",new JSONArray()).put("inventory_truncated",false).put("subscription_failed",false).put("packets",0)
+                .put("services",new JSONArray()).put("inventory_truncated",false).put("subscription_failed",false).put("packets",0)
                 .put("last_navigation_hex",JSONObject.NULL).put("navigation_packets",0).put("navigation_received_elapsed_nanos",JSONObject.NULL).put("last_feature_hex",JSONObject.NULL)
                 .put("last_location_hex",JSONObject.NULL).put("location_sequence",0).put("location_received_elapsed_nanos",JSONObject.NULL)
                 .put("location_received_timestamp_ms",JSONObject.NULL).put("last_quality_hex",JSONObject.NULL).put("quality_received_elapsed_nanos",JSONObject.NULL)
                 .put("last_notification_elapsed_nanos",JSONObject.NULL)
-                .put("last_characteristic",JSONObject.NULL).put("last_payload_hex",JSONObject.NULL).put("sample",JSONObject.NULL); }
+                .put("last_characteristic",JSONObject.NULL).put("last_payload_hex",JSONObject.NULL); }
         catch (Exception impossible) { return new JSONObject(); }
     }
     @Override public void onDestroy() { closeConnection(); resetData(); setState("stopped",false); if (instance==this) instance=null; super.onDestroy(); }

@@ -35,7 +35,7 @@ final class BridgeStatusAuth {
                 || !choice(m.get("phase"),"not_started","connecting","connected","reconnecting","stopping","stopped","error","unknown")
                 || !choice(m.get("transport"),"usb","wifi","none") || !choice(m.get("mode"),"gps","hybrid","fusion","test","none")
                 || !choice(m.get("worker_state"),"waiting","running","stale","reconnecting","stopped","error","unknown")
-                || !choice(m.get("source"),"gps","network","fused","test","inertial","unknown")
+                || !choice(m.get("source"),"gps","network","fused","test","inertial","ble_lns","unknown")
                 || !choice(m.get("accuracy_kind"),"reported","model_estimate","unknown")
                 || !choice(m.get("issue"),"none","waiting_usb","usb_missing","usb_role","usb_permission","usb_role_failed","usb_busy","waiting_helper","source_unavailable","worker_error","clear_unconfirmed","bridge_error","worker_stale")
                 || !number(m.get("accuracy_m"),Double.MAX_VALUE) || !number(m.get("fix_age_ms"),1e12)

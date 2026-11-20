@@ -173,7 +173,8 @@ public final class MainActivity extends Activity {
                         }).setNegativeButton(Language.tr("返回"),null).show();
                 break;
             case "BLE": startActivity(new Intent(this,BleReceiverActivity.class));break;
-            case "TERM": case "CONNECT": requestBridgeCommand(TermuxCommand.USB);break;
+            case "CONNECT": requestBridgeCommand(TermuxCommand.AUTO);break;
+            case "TERM": requestBridgeCommand(TermuxCommand.USB);break;
             case "CONNECT_WIFI": requestBridgeCommand(TermuxCommand.WIFI);break;
             case "DISCONNECT": requestBridgeCommand(TermuxCommand.STOP);break;
             case "BRIDGE_STATUS": requestBridgeCommand(TermuxCommand.STATUS);break;

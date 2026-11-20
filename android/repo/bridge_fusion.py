@@ -99,7 +99,7 @@ def parse_snapshot(raw, run_id, sequence, now, roundtrip_seconds):
             raise ValueError('invalid_sample_time')
         if max(age_ms / 1000, now - sample_time) > .5:
             return None, None
-    elif age_ms > 10000: return None, None
+    elif age_ms > (5000 if sample['source'] == 'fused' else 10000): return None, None
     fix = {'run_id':run_id, 'sequence':sequence, 'source':sample['source'],
            'latitude':sample['latitude'], 'longitude':sample['longitude'], 'accuracy_m':sample['accuracy_m'],
            'received_monotonic':now, 'age_at_receive_ms':age_ms}

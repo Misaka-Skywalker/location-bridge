@@ -1,9 +1,12 @@
 import importlib.util
 import math
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'android/repo'))
 
 spec = importlib.util.spec_from_file_location('bridge_worker', Path(__file__).resolve().parents[1] / 'android/repo/bridge_worker.py')
 worker = importlib.util.module_from_spec(spec)
@@ -193,11 +196,14 @@ class WorkerLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(state['last_accuracy_m'], 5)
 
 class InertialLifecycleTests(unittest.IsolatedAsyncioTestCase):
-    async def test_expired_during_set_is_cleared(self):
+    async def test_collected_continuous_ins_expires_during_set(self):
         import asyncio
         import sys
         import types
         from unittest.mock import patch
+
+        import bridge_fusion
+        import bridge_service
         names=('pymobiledevice3', 'pymobiledevice3.lockdown', 'pymobiledevice3.remote',
                'pymobiledevice3.remote.userspace_tunnel', 'pymobiledevice3.remote.tunnel_service',
                'pymobiledevice3.services', 'pymobiledevice3.services.dvt',
@@ -247,11 +253,23 @@ class InertialLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(.52)
                 now=worker.elapsed_time()
                 ns=int(now*1e9)
-                fix=dict(run_id='run',sequence=1,source='inertial',latitude=1,longitude=2,
-                    accuracy_m=20,accuracy_kind='model_estimate',anchor_source='gps',
-                    anchor_elapsed_realtime_nanos=ns-2_000_000_000,elapsed_realtime_nanos=ns,
-                    prediction_age_ms=2000,received_monotonic=now,age_at_receive_ms=0)
-                (directory/'fix.json').write_text(json.dumps(fix))
+                sample=dict(sequence=1,source='inertial',latitude=1,longitude=2,
+                    accuracy_m=20,accuracy_kind='model_estimate',anchor_source='gps',coordinate_system='WGS84',
+                    anchor_elapsed_realtime_nanos=ns-9_000_000_000,elapsed_realtime_nanos=ns,
+                    prediction_age_ms=9000,timestamp_ms=1000,is_mock=False)
+                raw=dict(protocol=1,session_id='1c68b7a8-506c-4dc9-a137-810a20b8e5c2',
+                    running=True,elapsed_realtime_nanos=ns,sample=sample,
+                    providers={name:dict(available=True,enabled=True,error=None)
+                        for name in ('gps','fused','network')})
+                done=asyncio.Event()
+                with patch.object(bridge_fusion,'request_snapshot',return_value=raw):
+                    collector=asyncio.create_task(bridge_service.collect_fusion(directory,'run',done,'key'))
+                    try:
+                        while not (directory/'fix.json').exists():
+                            await asyncio.sleep(.01)
+                    finally:
+                        done.set()
+                        await collector
             with patch.dict(sys.modules,modules):
                 await asyncio.wait_for(asyncio.gather(worker.run_worker(args),provide()),5)
             self.assertIn('set',events)

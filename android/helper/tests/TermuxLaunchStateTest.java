@@ -3,6 +3,7 @@ public final class TermuxLaunchStateTest {
     static void check(boolean v,String m){if(!v)throw new AssertionError(m);}
     public static void main(String[] args){
         check(TermuxCommand.USB.arguments()[2].equals("fusion"),"fixed mode");
+        check(TermuxCommand.AUTO.arguments()[4].equals("auto"),"fixed automatic transport");
         check(TermuxCommand.WIFI.arguments()[4].equals("wifi"),"fixed transport");
         check(TermuxCommand.STOP.arguments().length==1,"stop fixed");
         TermuxLaunchState state = new TermuxLaunchState("pending",100,"usb","abc",null);
@@ -10,6 +11,7 @@ public final class TermuxLaunchStateTest {
         check(state.view(12101).equals("unconfirmed"),"timeout not success");
         check(state.view(99).equals("unconfirmed"),"clock reset");
         check(state.busy(TermuxCommand.WIFI,101),"repeated start blocked");
+        check(new TermuxLaunchState("pending",100,"auto","abc",null).busy(TermuxCommand.USB,101),"automatic start occupies start slot");
         check(!state.busy(TermuxCommand.STOP,101),"stop always allowed");
         check(!state.busy(TermuxCommand.STATUS,101),"status allowed");
         check(!state.accepts("other",101),"wrong nonce denied");
