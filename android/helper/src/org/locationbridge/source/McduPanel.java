@@ -217,11 +217,10 @@ final class McduPanel extends LinearLayout {
         int count=page.equals("SYS")?3:page.equals("GNSS")||page.equals("INS")?5:6;
         for(int r=0;r<rows.length;r++){
             rows[r].setVisibility(r<count?VISIBLE:GONE);
-            // Reserve both unit lines even when a measurement is missing.
-            boolean dualLeft=(page.equals("POS") && r==5) || (page.equals("GNSS") && (r==0 || r==2));
-            boolean dualRight=(page.equals("INS") || page.equals("GNSS")) && r==2;
-            values[r][0].setMinLines(dualLeft?2:1);
-            values[r][1].setMinLines(dualRight?2:1);
+            // Keep both column headings level when one measurement uses two units.
+            boolean dualUnits=(page.equals("POS") && r==5) || (page.equals("GNSS") && r==0)
+                    || ((page.equals("GNSS") || page.equals("INS")) && r==2);
+            for(TextView value:values[r]) value.setMinLines(dualUnits?2:1);
         }
     }
     private static String provider(JSONObject providers, String key) {
