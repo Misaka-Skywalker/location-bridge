@@ -1,3 +1,3 @@
-# Subagent model
+# Subagent model selection
 
-When using a Sol subagent for this project, select `gpt-6.2-sol`. Honor explicit requests for other model families.
+Use `gpt-6.1-terra` by default for this project. Use `gpt-6.2-sol` for complex tasks. Choose the reasoning effort for each subagent independently based on the needs of its task. Honor explicit user requests for a particular model or reasoning effort.
