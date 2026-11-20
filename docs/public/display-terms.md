@@ -10,7 +10,7 @@ The English interface uses short instrument-style labels. Page titles, status li
 | GS | Ground speed, displayed in km/h and kts. It is not airspeed. |
 | TRK TRUE / TRK MAG | Direction of movement relative to true / magnetic north. These are not aircraft or phone heading. |
 | MAG VAR (EST) | Estimated magnetic variation from Android's magnetic model. East is positive in the true-to-magnetic track calculation. |
-| ALT / ALT DATUM | Geometric altitude and its reference. WGS84 ELLIP means ellipsoid height, not mean sea level, flight level or pressure altitude. |
+| WGS84 ELLIP ALT | Height above the WGS84 ellipsoid, shown in metres and feet. |
 | H ACC / V ACC / GS ACC | The source-reported horizontal, vertical and speed accuracy. The app does not relabel these as protection levels. |
 | INS | The app's GNSS-initialized horizontal inertial estimate. |
 | INS EPU | Estimated Position Uncertainty from the current INS model. Its confidence level is uncalibrated; this is not a validated 95% containment bound, ANP, HFOM or protection-level output. |
@@ -19,7 +19,7 @@ The English interface uses short instrument-style labels. Page titles, status li
 | GNSS UPD AGE / UPDATE AGE | Time since the relevant GNSS anchor, position sample or recorded correction, as indicated by the field. |
 | ALIGN WAIT / ALIGNED / IN USE | Waiting for a valid GNSS anchor / estimate initialized / INS selected for output. ALIGNED does not mean that the INS source is currently selected. |
 | ON / OFF | Feature enabled / disabled, not a declaration of hardware serviceability. |
-| UNKNOWN / UNAVAIL / NO DATA | State not known / resource unavailable / measurement absent. Missing numerical values remain `---`. |
+| UNKNOWN / UNAVAIL / NO DATA | State unknown / resource unavailable / measurement absent. Missing readings are shown as `---` in their usual positions. |
 | ATT / ACCEL | Attitude / acceleration. ACCEL is kept distinct from accuracy (ACC). |
 | SV USED / SV VISIBLE | Satellites used in a GNSS fix / observed satellites, deduplicated across signals. |
 | FULL TRK REQ / HW CONFIRMED | GNSS full-tracking request / whether the hardware reports full tracking. An accepted request alone does not confirm operation. |

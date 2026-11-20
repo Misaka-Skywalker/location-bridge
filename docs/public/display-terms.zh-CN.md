@@ -10,7 +10,7 @@
 | GS | 地速，同时显示 km/h 和 kts，不是空速。 |
 | TRK TRUE / TRK MAG | 相对真北／磁北的运动方向，不是飞机或手机的机头朝向。 |
 | MAG VAR (EST) | Android 磁场模型估计的磁差；真航迹转磁航迹的计算以东偏为正。 |
-| ALT / ALT DATUM | 几何高度及其基准；WGS84 ELLIP 表示椭球高，不是海拔、飞行高度层或气压高度。 |
+| WGS84 ELLIP ALT | 相对 WGS84 椭球面的高度，同时显示米和英尺。 |
 | H ACC / V ACC / GS ACC | 来源报告的水平、垂直和地速精度，不改称为保护级。 |
 | INS | 由 GNSS 初始化的水平惯性推算。 |
 | INS EPU | Estimated Position Uncertainty，当前惯导模型估计的位置不确定度；置信水平尚未标定，不等同于已验证的 95% 包含界限、ANP、HFOM 或保护级输出。 |
@@ -19,7 +19,7 @@
 | GNSS UPD AGE / UPDATE AGE | 距相应 GNSS 校准点、位置样本或校正记录的时间，具体依字段而定。 |
 | ALIGN WAIT / ALIGNED / IN USE | 等待有效 GNSS 校准点／已初始化推算／惯导已被选作输出。ALIGNED 不表示当前一定使用惯导输出。 |
 | ON / OFF | 功能已启用／停用，不表示硬件适航或完好性。 |
-| UNKNOWN / UNAVAIL / NO DATA | 状态未知／资源不可用／缺少测量；无数值时仍显示 `---`。 |
+| UNKNOWN / UNAVAIL / NO DATA | 状态未知／资源不可用／缺少测量。读数暂缺时，在字段原位显示 `---`。 |
 | ATT / ACCEL | 姿态／加速度，ACCEL 与表示精度的 ACC 分开。 |
 | SV USED / SV VISIBLE | 参与 GNSS 解算／已观测卫星数，跨信号去重。 |
 | FULL TRK REQ / HW CONFIRMED | GNSS 连续跟踪请求／硬件是否报告实际连续跟踪；请求被接受不等于实际运行已确认。 |

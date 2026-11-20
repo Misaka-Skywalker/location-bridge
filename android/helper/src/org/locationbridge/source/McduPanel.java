@@ -14,8 +14,10 @@ final class McduPanel extends LinearLayout {
     static final int BODY=0xff171c21, SCREEN=0xff080e12, WHITE=0xffe4ecee;
     static final int CYAN=0xff68dbe4, GREEN=0xff8ce3a8, AMBER=0xffffc772, MUTED=0xffa9b7c2;
     private final TextView title, annunciator, scratch, pairing, bridgeHeading, bridgeDetails;
+    private final LinearLayout[] rows=new LinearLayout[6];
     private final TextView[][] labels=new TextView[6][2], values=new TextView[6][2];
     private String page="POS";
+    private String layoutPage="";
     private JSONObject snapshot;
     private JSONObject commandStatus;
     private boolean permission, enabled, running;
@@ -28,16 +30,15 @@ final class McduPanel extends LinearLayout {
     McduPanel(Context context,Actions actions, Runnable pageChanged) {
         super(context);
         setOrientation(VERTICAL);setPadding(dp(12),dp(12),dp(12),dp(12));setBackgroundColor(BODY);
-        TextView brand=text(Language.tr("定位桥  /  LOCATION BRIDGE"),12,MUTED);
-        brand.setPadding(dp(8),0,0,dp(8));addView(brand);
         LinearLayout display=new LinearLayout(context);display.setOrientation(VERTICAL);
         display.setPadding(dp(12),dp(12),dp(12),dp(8));display.setBackground(shape(SCREEN,0xff38444d,4));addView(display);
         title=text(Language.tr("位置总览  1/5"),18,WHITE);display.addView(title);
         bridgeHeading=text(Language.tr("iPad：尚未收到状态"),14,AMBER);bridgeHeading.setPadding(0,dp(8),0,0);display.addView(bridgeHeading);
-        bridgeDetails=text(Language.tr("点击“连接 iPad”启动 USB 连接"),11,MUTED);bridgeDetails.setMinHeight(dp(28));display.addView(bridgeDetails);
+        bridgeDetails=text("",11,MUTED);bridgeDetails.setVisibility(GONE);display.addView(bridgeDetails);
         annunciator=text(Language.tr("● 手机定位已停止"),12,AMBER);annunciator.setPadding(0,dp(4),0,dp(4));display.addView(annunciator);
         for(int row=0;row<6;row++) {
             LinearLayout line=new LinearLayout(context);line.setOrientation(HORIZONTAL);line.setGravity(Gravity.CENTER_VERTICAL);
+            rows[row]=line;
             line.setMinimumHeight(dp(44));display.addView(line,new LayoutParams(-1,LayoutParams.WRAP_CONTENT));
             for(int col=0;col<2;col++) {
                 LinearLayout cell=new LinearLayout(context);cell.setOrientation(VERTICAL);
@@ -47,7 +48,7 @@ final class McduPanel extends LinearLayout {
                 cell.addView(labels[row][col]);cell.addView(values[row][col]);line.addView(cell,new LayoutParams(0,-2,1));
             }
         }
-        scratch=text(Language.tr("点击“启动定位”开始"),12,AMBER);scratch.setMinHeight(dp(40));scratch.setPadding(0,dp(8),0,dp(8));display.addView(scratch);
+        scratch=text("",12,AMBER);scratch.setPadding(0,dp(8),0,dp(4));scratch.setVisibility(GONE);display.addView(scratch);
         LinearLayout operations=new LinearLayout(context);operations.setOrientation(VERTICAL);
         operations.setPadding(0,dp(8),0,0);addView(operations);
         ActionRow connection=new ActionRow(()->actions.run("CONNECT"),()->actions.run("DISCONNECT"));
@@ -66,9 +67,7 @@ final class McduPanel extends LinearLayout {
             LayoutParams params=new LayoutParams(0,LayoutParams.WRAP_CONTENT,1);button.setMinHeight(dp(48));
             params.setMargins(dp(2),0,dp(2),0);pageBar.addView(button,params);
         }
-        pairing=text(Language.tr("尚未配对"),11,MUTED);pairing.setPadding(dp(4),dp(16),dp(4),dp(8));addView(pairing);
-        TextView legend=text(Language.tr("连接 iPad 默认使用 USB；Wi-Fi 连接请前往设置"),11,MUTED);
-        legend.setPadding(dp(4),0,dp(4),0);addView(legend);
+        pairing=text("",11,MUTED);pairing.setPadding(dp(4),dp(8),dp(4),0);addView(pairing);
     }
     private final class ActionRow extends LinearLayout {
         final Button leftKey,rightKey;
@@ -109,9 +108,13 @@ final class McduPanel extends LinearLayout {
     private TextView text(String s,int size,int color){TextView t=new TextView(getContext());t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setTypeface(Typeface.MONOSPACE);t.setIncludeFontPadding(false);return t;}
     String currentPage(){ return page; }
     void selectPage(String value){ for(String candidate:PAGES) if(candidate.equals(value)) { page=value; break; } }
-    void pairing(String text){pairing.setText(text);}
+    private static void showMessage(TextView view,String message){
+        view.setText(message);
+        view.setVisibility(message.isEmpty()?GONE:VISIBLE);
+    }
+    void pairing(String message){showMessage(pairing,message);}
     void commandStatus(JSONObject value){commandStatus=value;}
-    void fault(String text){annunciator.setText(Language.tr("● 状态读取失败"));annunciator.setTextColor(AMBER);scratch.setText(text);}
+    void fault(String text){annunciator.setText(Language.tr("● 状态读取失败"));annunciator.setTextColor(AMBER);showMessage(scratch,text);}
     void update(JSONObject data,boolean permission,boolean enabled,JSONObject bridge){this.snapshot=data;this.permission=permission;this.enabled=enabled;render();renderBridge(bridge);}
     private void renderBridge(JSONObject report){
         String phase=str(report,"phase","unknown"),transport=str(report,"transport","none");
@@ -126,17 +129,17 @@ final class McduPanel extends LinearLayout {
         if(commandNewer && !commandState.equals("none")) {
             boolean stopping="stop".equals(str(commandStatus,"operation","")) && commandState.equals("pending");
             bridgeHeading.setText(Language.tr(commandState.equals("failed")?"iPad：命令执行失败":stopping?"iPad：已发送断开请求":"iPad：等待连接报告"));
-            bridgeDetails.setText(Language.tr("terminal_open_failed".equals(str(commandStatus,"error",""))?"请点击 Termux 通知打开终端，让命令继续执行":commandState.equals("failed")?"请检查 Termux 应用调用设置和桥接脚本":commandState.equals("unconfirmed")?"尚未收到状态，请在 Termux 中检查启动结果":commandState.equals("completed")?"命令已结束，连接状态尚未确认":"正在调用 Termux，请处理可能出现的授权提示"));
+            showMessage(bridgeDetails,Language.tr("terminal_open_failed".equals(str(commandStatus,"error",""))?"请点击 Termux 通知打开终端，让命令继续执行":commandState.equals("failed")?"请检查 Termux 应用调用设置和桥接脚本":commandState.equals("unconfirmed")?"尚未收到状态，请在 Termux 中检查启动结果":commandState.equals("completed")?"命令已结束，连接状态尚未确认":"正在调用 Termux，请处理可能出现的授权提示"));
             return;
         }
         if(!fresh){
 
             bridgeHeading.setText(history?(phase.equals("stopped")?Language.tr("iPad：上次连接已结束"):Language.tr("iPad：连接状态未知"))+via:Language.tr("iPad：尚未收到状态"));
             if (history && report.optBoolean("clear_pending"))
-                bridgeDetails.setText(Language.tr("尚未确认模拟位置已清除，请在 Termux 中查看"));
+                showMessage(bridgeDetails,Language.tr("尚未确认模拟位置已清除，请在 Termux 中查看"));
             else if (history && !phase.equals("stopped"))
-                bridgeDetails.setText(Language.tr("连接状态未更新，请在 Termux 中查看"));
-            else bridgeDetails.setText(Language.tr("点击“连接 iPad”启动 USB 连接"));
+                showMessage(bridgeDetails,Language.tr("连接状态未更新，请在 Termux 中查看"));
+            else showMessage(bridgeDetails,"");
             return;
         }
         String state;
@@ -174,11 +177,13 @@ final class McduPanel extends LinearLayout {
                 detail=Language.tr("最近发送 · ")+label;
                 if(!report.isNull("accuracy_m")) detail+=" · "+(src.equals("inertial")?Language.tr("模型误差 "):Language.tr("精度 "))+distance(report,"accuracy_m",false);
             }
-        }else if(phase.equals("stopped")||phase.equals("error"))
-            detail=report.optBoolean("clear_pending")?Language.tr("尚未确认模拟位置已清除，请在 Termux 中查看"):Language.tr("连接已结束；可点击连接按钮重新启动");
+        }else if((phase.equals("stopped")||phase.equals("error")) && report.optBoolean("clear_pending"))
+            detail=Language.tr("尚未确认模拟位置已清除，请在 Termux 中查看");
+        else if(phase.equals("error")) detail=Language.tr("连接失败，请在 Termux 中查看详情");
+        else if(phase.equals("stopped")||phase.equals("not_started")) detail="";
         else if(phase.equals("stopping")) detail=Language.tr("正在断开连接并清除模拟位置");
         else detail=Language.tr("正在等待 Termux 更新连接状态");
-        bridgeDetails.setText(detail);
+        showMessage(bridgeDetails,detail);
     }
     private static JSONObject obj(JSONObject o,String key){return o==null?null:o.optJSONObject(key);}
     private static String str(JSONObject o,String key,String fallback){return o==null?fallback:o.optString(key,fallback);}
@@ -202,7 +207,23 @@ final class McduPanel extends LinearLayout {
         return String.valueOf(keys.size());
     }
     private String age(JSONObject o){return o==null?"---":String.format(Locale.ROOT,"%.1f s",Math.max(0,(snapshot.optLong("elapsed_realtime_nanos")-o.optLong("elapsed_realtime_nanos"))/1e9));}
-    private void row(int r,String l,String lv,String right,String rv){labels[r][0].setText(l);values[r][0].setText(lv);labels[r][1].setText(right);values[r][1].setText(rv);}
+    private void row(int r,String left,String leftValue,String right,String rightValue){
+        labels[r][0].setText(left);values[r][0].setText(leftValue);
+        labels[r][1].setText(right);values[r][1].setText(rightValue);
+    }
+    private void applyPageLayout(){
+        if(page.equals(layoutPage)) return;
+        layoutPage=page;
+        int count=page.equals("SYS")?3:page.equals("GNSS")||page.equals("INS")?5:6;
+        for(int r=0;r<rows.length;r++){
+            rows[r].setVisibility(r<count?VISIBLE:GONE);
+            // Reserve both unit lines even when a measurement is missing.
+            boolean dualLeft=(page.equals("POS") && r==5) || (page.equals("GNSS") && (r==0 || r==2));
+            boolean dualRight=(page.equals("INS") || page.equals("GNSS")) && r==2;
+            values[r][0].setMinLines(dualLeft?2:1);
+            values[r][1].setMinLines(dualRight?2:1);
+        }
+    }
     private static String provider(JSONObject providers, String key) {
         JSONObject p = obj(providers, key);
         if (p == null) return "---";
@@ -216,6 +237,7 @@ final class McduPanel extends LinearLayout {
         return o==null || !o.has(key)?"---":DisplayUnits.duration((snapshot.optLong("elapsed_realtime_nanos")-o.optLong(key))/1e9);
     }
     private void render(){
+        applyPageLayout();
         JSONObject s=obj(snapshot,"sample"),h=obj(snapshot,"altitude"),g=obj(snapshot,"gnss_motion"),i=obj(snapshot,"inertial");
         JSONObject sensors=obj(i,"sensors"),selection=obj(snapshot,"selection"),providers=obj(snapshot,"providers");
         JSONObject ins=obj(i,"position"),correction=obj(i,"last_correction");
@@ -235,6 +257,7 @@ final class McduPanel extends LinearLayout {
         }
         annunciator.setText(predicted?Language.tr("● 惯性推算中"):s!=null?Language.tr("● 手机定位正常"):running?Language.tr("● 等待手机定位"):Language.tr("● 手机定位已停止"));
         annunciator.setTextColor(s!=null&&!predicted?GREEN:AMBER);
+        String note="";
         if(page.equals("POS")){
             title.setText(Language.tr("位置总览  1/5"));
             row(0,Language.tr("定位来源"),source(s),Language.tr("距上次更新"),age(s));
@@ -242,15 +265,15 @@ final class McduPanel extends LinearLayout {
             row(2,Language.tr("高度"),number(h,"altitude_m","%.1f m"),Language.tr("高度来源"),source(h));
             row(3,predicted?Language.tr("惯导位置不确定度"):Language.tr("水平精度"),distance(s,"accuracy_m",false),Language.tr("垂直精度"),number(h,"vertical_accuracy_m","%.1f m"));
             row(4,Language.tr("真航迹角"),number(g,"bearing_deg","%.1f°"),Language.tr("磁航迹角"),number(g,"magnetic_bearing_deg","%.1f°"));
-            row(5,Language.tr(predicted?"惯导地速":"GNSS 地速"),speed(predicted?s:g,"speed_m_s"),Language.tr("惯性推算"),predicted?DisplayUnits.duration(s.optDouble("prediction_age_ms")/1000):enabled?Language.tr("已启用"):Language.tr("已停用"));
+            row(5,Language.tr(predicted?"惯导地速":"GNSS 地速"),speed(predicted?s:g,"speed_m_s"),Language.tr("推算时长"),predicted?DisplayUnits.duration(s.optDouble("prediction_age_ms")/1000):"---");
         }else if(page.equals("GNSS")){
             title.setText(Language.tr("高度与速度  2/5"));
-            row(0,Language.tr("高度（米）"),number(h,"altitude_m","%.1f m"),Language.tr("高度（英尺）"),h==null?"---":String.format(Locale.ROOT,"%.0f ft",h.optDouble("altitude_m")*3.280839895));
-            row(1,Language.tr("高度来源"),source(h),Language.tr("高度基准"),h==null?"---":Language.tr("WGS84 椭球"));
-            row(2,Language.tr("垂直精度"),number(h,"vertical_accuracy_m","%.1f m"),Language.tr("距上次更新"),age(h));
-            row(3,Language.tr(predicted?"惯导地速":"GNSS 地速"),speed(predicted?s:g,"speed_m_s"),Language.tr("地速精度"),predicted?"---":speed(g,"speed_accuracy_m_s"));
-            row(4,Language.tr("真航迹角"),number(g,"bearing_deg","%.1f°"),Language.tr("磁航迹角"),number(g,"magnetic_bearing_deg","%.1f°"));
-            row(5,Language.tr("磁差（估算）"),declination(g),Language.tr("真航迹角精度"),number(g,"bearing_accuracy_deg","%.1f°"));
+            row(0,Language.tr("WGS84 椭球高"),DisplayUnits.altitude(h==null?Double.NaN:h.optDouble("altitude_m")),Language.tr("高度来源"),source(h));
+            row(1,Language.tr("垂直精度"),number(h,"vertical_accuracy_m","%.1f m"),Language.tr("距上次更新"),age(h));
+            row(2,Language.tr(predicted?"惯导地速":"GNSS 地速"),speed(predicted?s:g,"speed_m_s"),Language.tr("地速精度"),predicted?"---":speed(g,"speed_accuracy_m_s"));
+            row(3,Language.tr("真航迹角"),number(g,"bearing_deg","%.1f°"),Language.tr("磁航迹角"),number(g,"magnetic_bearing_deg","%.1f°"));
+            row(4,Language.tr("磁差（估算）"),declination(g),Language.tr("真航迹角精度"),number(g,"bearing_accuracy_deg","%.1f°"));
+            if(running && h==null && !predicted && g==null) note=Language.tr("等待高度或速度数据");
         }else if(page.equals("INS")){
             title.setText(Language.tr("惯性推算  3/5"));
             String insState;
@@ -263,41 +286,38 @@ final class McduPanel extends LinearLayout {
             row(2,Language.tr("惯导位置不确定度"),distance(ins,"accuracy_m",false),Language.tr("惯导地速"),speed(ins,"speed_m_s"));
             row(3,Language.tr("上次校准位置差"),distance(correction,"distance_m",false),Language.tr("距上次校正"),elapsed(correction,"elapsed_realtime_nanos"));
             row(4,Language.tr("东西差（+东）"),distance(correction,"east_m",true),Language.tr("南北差（+北）"),distance(correction,"north_m",true));
-            String motionStatus = "---";
-            if (running && enabled && sensors != null) {
-                boolean registered = sensors.optBoolean("rotation_registered") && sensors.optBoolean("acceleration_registered");
-                motionStatus = Language.tr(registered ? "已启用" : "不可用");
-            }
-            row(5,Language.tr("运动传感器"),motionStatus,Language.tr("推算时限"),Language.tr("不限"));
+            if(running && enabled && i!=null) note=inertialReason(str(i,"reason","waiting_anchor"));
         }else if(page.equals("SYS")){
             title.setText(Language.tr("系统状态  4/5"));
-            row(0,Language.tr("手机定位"),running?Language.tr("运行中"):Language.tr("已停止"),Language.tr("位置状态"),s!=null?Language.tr("有效"):Language.tr("等待定位"));
-            row(1,"GPS",provider(providers,"gps"),Language.tr("系统融合"),provider(providers,"fused"));
-            row(2,Language.tr("网络定位"),provider(providers,"network"),Language.tr("位置权限"),permission?Language.tr("精确位置"):Language.tr("需要授权"));
-            row(3,Language.tr("丢弃定位次数"),selection==null?"---":String.valueOf(selection.optLong("rejected_count")),Language.tr("切换来源次数"),selection==null?"---":String.valueOf(selection.optLong("switch_count")));
-            row(4,Language.tr("惯性推算"),enabled?Language.tr("已启用"):Language.tr("已停用"),Language.tr("工作模式"),Language.tr("手机定位"));
-            row(5,Language.tr("定位请求间隔"),number(obj(snapshot,"adaptive"),"requested_interval_ms","%.0f ms"),Language.tr("发送至 iPad"),Language.tr("仅经纬度"));
+            row(0,"GPS",provider(providers,"gps"),Language.tr("系统融合"),provider(providers,"fused"));
+            row(1,Language.tr("位置权限"),permission?Language.tr("精确位置"):Language.tr("需要授权"),Language.tr("网络定位"),provider(providers,"network"));
+            row(2,Language.tr("丢弃定位次数"),selection==null?"---":String.valueOf(selection.optLong("rejected_count")),Language.tr("切换来源次数"),selection==null?"---":String.valueOf(selection.optLong("switch_count")));
         }else{
             JSONObject rx=obj(snapshot,"gnss_diagnostics"),status=obj(rx,"status"),raw=obj(rx,"measurements");
             title.setText(Language.tr("接收机能力  5/5"));
             row(0,Language.tr("参与解算卫星"),number(status,"satellites_used","%.0f"),Language.tr("可见卫星"),number(status,"satellites_visible","%.0f"));
             row(1,Language.tr("已观测星座"),countedKeys(obj(status,"constellations")),Language.tr("已观测信号类型"),countedKeys(obj(status,"bands")));
             row(2,Language.tr("平均载噪比"),number(status,"cn0_mean_dbhz","%.1f dB-Hz"),Language.tr("原始观测条数"),number(raw,"count","%.0f"));
-            row(3,Language.tr("连续跟踪请求"),capability(rx,"full_tracking_request_accepted"),Language.tr("硬件确认"),capability(raw,"full_tracking_reported"));
-            row(4,Language.tr("姿态路径"),sensors==null?"---":!sensors.optBoolean("rotation_registered")?Language.tr("不可用"):str(sensors,"selected_backend","").startsWith("geomagnetic")?Language.tr("地磁姿态"):Language.tr("系统姿态"),Language.tr("加速度路径"),sensors==null?"---":!sensors.optBoolean("acceleration_registered")?Language.tr("不可用"):str(sensors,"selected_backend","").endsWith("gravity_subtraction")?Language.tr("加速度减重力"):Language.tr("系统线加速度"));
+            String tracking=rx==null?"---":rx.optBoolean("full_tracking_requested")?capability(rx,"full_tracking_request_accepted"):Language.tr("已关闭");
+            row(3,Language.tr("连续跟踪请求"),tracking,Language.tr("硬件确认"),raw==null?"---":capability(raw,"full_tracking_reported"));
+            boolean showMotion=running && enabled && sensors!=null;
+            row(4,Language.tr("姿态路径"),!showMotion?"---":!sensors.optBoolean("rotation_registered")?Language.tr("不可用"):str(sensors,"selected_backend","").startsWith("geomagnetic")?Language.tr("地磁姿态"):Language.tr("系统姿态"),Language.tr("加速度路径"),!showMotion?"---":!sensors.optBoolean("acceleration_registered")?Language.tr("不可用"):str(sensors,"selected_backend","").endsWith("gravity_subtraction")?Language.tr("加速度减重力"):Language.tr("系统线加速度"));
             row(5,Language.tr("环境气压"),number(sensors,"pressure_hpa","%.1f hPa"),Language.tr("定位请求间隔"),number(obj(snapshot,"adaptive"),"requested_interval_ms","%.0f ms"));
+            if(running && status==null && raw==null) note=receiverNote(str(rx,"state","waiting"));
         }
-        String reason=str(i,"reason","waiting_anchor");
-        scratch.setText(!running?Language.tr("点击“启动定位”获取手机位置"):page.equals("INS")?inertialReason(reason)+"\n"+Language.tr("位置差按同一时刻的惯导位置减去 GNSS 位置计算"):predicted?Language.tr("正在推算位置，误差为模型估计值\n收到新定位后自动恢复实测位置"):s==null?Language.tr("正在等待定位\n")+inertialReason(reason):Language.tr("定位正常 · ")+(h==null?Language.tr("暂无高度数据"):Language.tr("高度采用 WGS84 椭球高")));
-        if(page.equals("GNSS") && running && g!=null)
-            scratch.setText(Language.tr("航迹角表示移动方向，磁航迹角由磁差换算\n")+(h==null?Language.tr("暂无高度数据"):Language.tr("高度采用 WGS84 椭球高")));
-        if(page.equals("RX")) scratch.setText(Language.tr("能力按实际数据识别，未知不代表不支持\n气压不参与高度解算"));
+        showMessage(scratch,note);
+    }
+    private static String receiverNote(String state){
+        switch(state){
+            case "permission_required":return Language.tr("需要精确位置权限才能读取卫星观测");
+            case "disabled":return Language.tr("系统卫星定位已关闭");
+            case "unsupported":case "error":return Language.tr("无法读取卫星观测");
+            default:return Language.tr("等待卫星观测");
+        }
     }
     private static String inertialReason(String reason){
         switch(reason){
-            case "eligible":return Language.tr("持续推算中，实测位置可用时优先采用");
-            case "gnss_fresh":return Language.tr("GNSS 定位正常，推算速度已校准");
-            case "disabled":return Language.tr("惯性推算已停用");
+            case "eligible":case "gnss_fresh":case "disabled":return "";
             case "gnss_velocity_unavailable":return Language.tr("等待可靠的 GNSS 地速和航迹角");
             case "waiting_anchor":case "waiting_gnss":return Language.tr("等待 GNSS 数据完成初始校准");
             case "reference_expired":return Language.tr("需要新的 GNSS 位置更新磁差");

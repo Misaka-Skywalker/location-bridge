@@ -107,17 +107,23 @@ public final class MainActivity extends Activity {
     private void updatePairStatus() {
         if (panel == null) return;
         String saved = getSharedPreferences(PREFS, MODE_PRIVATE).getString(TOKEN, null);
-        String token = saved != null ? saved : candidateToken;
-        if (!AuthProtocol.isHex64(token)) { panel.pairing(Language.tr("尚未配对")); return; }
+        if (AuthProtocol.isHex64(saved)) panel.pairing("");
+        else if (AuthProtocol.isHex64(candidateToken)) panel.pairing(pairingFingerprint(candidateToken, false));
+        else panel.pairing(Language.tr("尚未配对"));
+    }
+    private String pairingFingerprint(String token, boolean paired) {
         try {
-            panel.pairing((saved != null ? Language.tr("已配对，指纹：") : Language.tr("待确认配对，指纹：")) + AuthProtocol.fingerprint(token));
-        } catch (Exception e) { panel.pairing(Language.tr("指纹计算失败")); }
+            return Language.tr(paired ? "已配对，指纹：" : "待确认配对，指纹：") + AuthProtocol.fingerprint(token);
+        } catch (Exception e) { return Language.tr("指纹计算失败"); }
     }
     private void confirmPairing() {
         SharedPreferences preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
         if (preferences.contains(TOKEN)) {
             candidateToken = null;
-            Toast.makeText(this, Language.tr("已配对，不会更换密钥"), Toast.LENGTH_LONG).show();
+            new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
+                    .setTitle(Language.tr("Termux 配对信息"))
+                    .setMessage(pairingFingerprint(preferences.getString(TOKEN,null),true))
+                    .setNegativeButton(Language.tr("返回"),null).show();
         } else if (candidateToken == null) {
             Toast.makeText(this, Language.tr("请先从 Termux 发起配对"), Toast.LENGTH_LONG).show();
         } else {
@@ -135,7 +141,8 @@ public final class MainActivity extends Activity {
             case "PAIR": confirmPairing();break;
             case "LOC": startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));break;
             case "SETTINGS":
-                String[] labels={Language.tr("定位和通知权限"),Language.tr("与 Termux 配对"),Language.tr("系统定位设置"),Language.tr("GNSS 连续跟踪"),Language.tr("启动 iPad 连接（USB）"),Language.tr("启动 iPad 连接（Wi-Fi）"),Language.tr("Termux 启动设置"),"Language / 语言"};
+                boolean paired=getSharedPreferences(PREFS,MODE_PRIVATE).contains(TOKEN);
+                String[] labels={Language.tr("定位和通知权限"),Language.tr(paired?"Termux 配对信息":"与 Termux 配对"),Language.tr("系统定位设置"),Language.tr("GNSS 连续跟踪"),Language.tr("启动 iPad 连接（USB）"),Language.tr("启动 iPad 连接（Wi-Fi）"),Language.tr("Termux 启动设置"),"Language / 语言"};
                 String[] actions={"AUTH","PAIR","LOC","TRACK","TERM","CONNECT_WIFI","TERM_HELP","LANG"};
                 new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
                         .setTitle(Language.tr("设置"))

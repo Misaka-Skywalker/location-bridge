@@ -4,6 +4,10 @@ import java.util.Locale;
 
 /** Display conversions only; transport and motion calculations retain SI units. */
 final class DisplayUnits {
+    static String altitude(double meters) {
+        if(!Double.isFinite(meters)) return "---";
+        return String.format(Locale.ROOT,"%.1f m\n%.0f ft",meters,meters/0.3048);
+    }
     static String speed(double metersPerSecond) {
         double kmh=metersPerSecond*3.6,kts=metersPerSecond*3600/1852;
         if(!Double.isFinite(kmh) || !Double.isFinite(kts) || metersPerSecond<0) return "---";

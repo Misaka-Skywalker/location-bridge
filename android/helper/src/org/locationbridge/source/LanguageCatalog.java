@@ -48,14 +48,9 @@ final class LanguageCatalog {
         EN.put("运动传感器", "MOTION SENS");
         EN.put("推算时限", "TIME LIMIT");
         EN.put("不限", "UNLIMITED");
-        EN.put("位置差按同一时刻的惯导位置减去 GNSS 位置计算", "LAST POS Δ = INS − GNSS AT UPDATE");
-        EN.put("持续推算中，实测位置可用时优先采用", "INS READY — MEASURED POS HAS PRIORITY");
 
         EN.put("请点击 Termux 通知打开终端，让命令继续执行", "Open the Termux notification to let the command continue");
-        EN.put("点击“连接 iPad”启动 USB 连接", "SELECT CONNECT FOR USB LINK");
-        EN.put("连接 iPad 默认使用 USB；Wi-Fi 连接请前往设置", "USB LINK DEFAULT / Wi-Fi VIA SETUP");
         EN.put("点击连接按钮", "SELECT CONNECT");
-        EN.put("连接已结束；可点击连接按钮重新启动", "LINK STOPPED — SELECT CONNECT TO RESTART");
         EN.put("连接 iPad", "CONNECT");
         EN.put("断开连接", "DISCONNECT");
         EN.put("请先安装 Termux", "Install Termux first");
@@ -84,6 +79,11 @@ final class LanguageCatalog {
         EN.put("正在调用 Termux，请处理可能出现的授权提示", "STARTING TERMUX — CHECK PERMISSION PROMPTS");
 
         EN.put("接收机", "RX");
+        EN.put("等待高度或速度数据", "ALT / SPD DATA WAIT");
+        EN.put("等待卫星观测", "GNSS OBS WAIT");
+        EN.put("无法读取卫星观测", "GNSS OBS UNAVAIL");
+        EN.put("系统卫星定位已关闭", "GNSS PROVIDER OFF");
+        EN.put("需要精确位置权限才能读取卫星观测", "GNSS OBS — PRECISE LOCATION REQUIRED");
         EN.put("接收机能力  5/5", "GNSS STATUS  5/5");
         EN.put("未知", "UNKNOWN");
         EN.put("是", "YES");
@@ -108,7 +108,6 @@ final class LanguageCatalog {
         EN.put("系统线加速度", "LINEAR ACCEL");
         EN.put("环境气压", "AMBIENT PRESS");
         EN.put("定位请求间隔", "REQ INTERVAL");
-        EN.put("能力按实际数据识别，未知不代表不支持\n气压不参与高度解算", "OBSERVED CAPABILITY / UNKNOWN ≠ UNSUPPORTED\nPRESSURE NOT USED FOR ALT");
 
         EN.put("位置", "POS");
         EN.put("高度速度", "ALT/SPD");
@@ -118,7 +117,6 @@ final class LanguageCatalog {
         EN.put("位置总览  1/5", "POS MONITOR  1/5");
         EN.put("iPad：尚未收到状态", "iPad LINK: NO REPORT");
         EN.put("● 手机定位已停止", "● POS OFF");
-        EN.put("点击“启动定位”开始", "SELECT POS START");
         EN.put("蓝牙设备", "BLUETOOTH");
         EN.put("设置", "SETUP");
         EN.put("点击文字或对应的侧键操作", "SELECT LABEL OR LSK");
@@ -185,10 +183,7 @@ final class LanguageCatalog {
         EN.put("推算 %.2f s", "INS %.2f s");
         EN.put("已停用", "OFF");
         EN.put("高度与速度  2/5", "ALT / SPEED  2/5");
-        EN.put("高度（米）", "ALT (m)");
-        EN.put("高度（英尺）", "ALT (ft)");
-        EN.put("高度基准", "ALT DATUM");
-        EN.put("WGS84 椭球", "WGS84 ELLIP");
+        EN.put("WGS84 椭球高", "WGS84 ELLIP ALT");
         EN.put("地速精度", "GS ACC");
         EN.put("磁差（估算）", "MAG VAR (EST)");
         EN.put("真航迹角精度", "TRK ACC");
@@ -196,7 +191,6 @@ final class LanguageCatalog {
         EN.put("推算功能", "INS MODE");
         EN.put("当前定位", "CURRENT POS");
         EN.put("实测位置", "MEASURED POS");
-        EN.put("等待定位", "POS WAIT");
         EN.put("姿态传感器", "ATT SENSOR");
         EN.put("线加速度传感器", "LINEAR ACCEL");
         EN.put("有效采样", "VALID SAMPLES");
@@ -207,29 +201,15 @@ final class LanguageCatalog {
         EN.put("校准来源", "UPDATE SOURCE");
         EN.put("实测高度", "MEASURED ALT");
         EN.put("系统状态  4/5", "SYSTEM STATUS  4/5");
-        EN.put("手机定位", "POS SERVICE");
-        EN.put("运行中", "RUNNING");
         EN.put("已停止", "STOPPED");
-        EN.put("位置状态", "POS STATUS");
-        EN.put("有效", "VALID");
         EN.put("位置权限", "POS PERMISSION");
         EN.put("精确位置", "PRECISE");
         EN.put("需要授权", "AUTH REQUIRED");
         EN.put("丢弃定位次数", "POS REJECTS");
         EN.put("切换来源次数", "SOURCE CHANGES");
-        EN.put("工作模式", "MODE");
         EN.put("设置 → Termux", "SETUP → TERMUX");
         EN.put("发送至 iPad", "iPad OUTPUT");
         EN.put("仅经纬度", "LAT/LON ONLY");
-        EN.put("点击“启动定位”获取手机位置", "SELECT POS START TO ACQUIRE POSITION");
-        EN.put("正在推算位置，误差为模型估计值\n收到新定位后自动恢复实测位置", "INS POSITION / EPU IS MODEL ESTIMATE\nMEASURED POS HAS PRIORITY");
-        EN.put("正在等待定位\n", "POS WAIT\n");
-        EN.put("定位正常 · ", "POS VALID · ");
-        EN.put("暂无高度数据", "ALT NO DATA");
-        EN.put("高度采用 WGS84 椭球高", "ALT DATUM: WGS84 ELLIPSOID");
-        EN.put("航迹角表示移动方向，磁航迹角由磁差换算\n", "TRK = DIRECTION OF TRAVEL\nTRK MAG = TRK TRUE − MAG VAR\n");
-        EN.put("GNSS 定位正常，推算速度已校准", "GNSS UPDATE / INS ALIGNED");
-        EN.put("惯性推算已停用", "INS OFF");
         EN.put("等待可靠的 GNSS 地速和航迹角", "ALIGN WAIT — GNSS GS / TRK REQUIRED");
         EN.put("等待 GNSS 数据完成初始校准", "ALIGN WAIT — GNSS REQUIRED");
         EN.put("需要新的 GNSS 位置更新磁差", "MAG VAR REF WAIT — GNSS REQUIRED");
@@ -249,6 +229,7 @@ final class LanguageCatalog {
         EN.put("配对保存失败", "PAIRING NOT SAVED");
         EN.put("定位和通知权限", "APP PERMISSIONS");
         EN.put("与 Termux 配对", "PAIR WITH TERMUX");
+        EN.put("Termux 配对信息", "TERMUX PAIRING");
         EN.put("系统定位设置", "SYSTEM LOCATION");
         EN.put("返回", "RETURN");
         EN.put("已启用惯性推算", "INS ENABLED");
