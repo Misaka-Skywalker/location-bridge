@@ -13,6 +13,10 @@ public final class MotionOrientationHistoryTest {
         history.addGyroscope(start,new float[]{0,0,1},20);
         history.addGyroscope(start+dt,new float[]{1,0,0},20);
         history.addGyroscope(start+2*dt,new float[]{0,10,0},20);
+        check(Double.isNaN(history.angularSpeedAt(start-1)),"future gyro supplies no disturbance evidence");
+        check(history.angularSpeedAt(start+dt)==1,"disturbance detector uses the last causal sample");
+        check(history.angularSpeedAt(start+2*dt)==10,"gyro norm at the acceleration timestamp");
+        check(Double.isNaN(history.angularSpeedAt(start+5*dt)),"stale gyro supplies no disturbance evidence");
         float[] at=history.at(start+2*dt);
         // The first 20ms is around device Z, followed by 20ms around the rotated device X.
         near(at[3],Math.sin(.02),"device Z swing applied");
@@ -21,6 +25,7 @@ public final class MotionOrientationHistoryTest {
         near(history.at(start)[0],1,"exact orientation does not need gyro");
 
         history.clearGyroscope();
+        check(Double.isNaN(history.angularSpeedAt(start+2*dt)),"cleared gyro supplies no disturbance evidence");
         near(history.at(start+2*dt)[7],0,"cleared gyro falls back to rotation vector");
         history.addGyroscope(start,new float[]{0,0,1},20);
         history.addGyroscope(start+4*dt,new float[]{1,0,0},20);

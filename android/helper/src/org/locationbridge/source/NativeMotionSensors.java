@@ -14,7 +14,8 @@ import org.json.JSONObject;
 /** Reports true-east/north linear acceleration; does not infer course or velocity. */
 final class NativeMotionSensors implements SensorEventListener {
     interface Listener {
-        void onSample(long elapsedNanos, double eastMps2, double northMps2);
+        void onSample(long elapsedNanos, double eastMps2, double northMps2,
+                      double magnitudeMps2, double angularSpeedRadPerSecond);
         void onInvalidated(String reason);
     }
     private static final long SECOND = 1_000_000_000L;
@@ -254,13 +255,14 @@ final class NativeMotionSensors implements SensorEventListener {
         }
         if (event.sensor!=acceleration) return;
         if(degradedRotation && !MotionSensorPolicy.magneticValid(magneticValues,magneticAccuracy,magneticTime,t)) { synchronized(lock) {orientations.clear();} invalidate("magnetic_unavailable");return; }
-        float[] current; double d; String issue=null;
+        float[] current; double d, angularSpeed; String issue=null;
         synchronized(lock) {
             String decision=accelerationGate.observe(t,referenceTime,now,referenceValid);
             if ("ignore".equals(decision)) return;
             if (!"accept".equals(decision)) issue=decision;
             else accelerationAccuracy=event.accuracy;
             current=orientations.at(t);
+            angularSpeed=orientations.angularSpeedAt(t);
             if (issue==null && (current==null || rotationAccuracy<SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM)) issue="direction_unavailable";
             d=declination;
         }
@@ -273,8 +275,9 @@ final class NativeMotionSensors implements SensorEventListener {
                 input=new float[]{(float)linear[0],(float)linear[1],(float)linear[2]};
             }
             double[] horizontal=MotionTransform.horizontal(current,input,d);
+            double magnitude=Math.hypot(Math.hypot(input[0],input[1]),input[2]);
             synchronized(lock) { samples++; state="active"; }
-            listener.onSample(t,horizontal[0],horizontal[1]);
+            listener.onSample(t,horizontal[0],horizontal[1],magnitude,angularSpeed);
         } catch (IllegalArgumentException ex) { invalidate("invalid_acceleration"); }
     }
     double uncertaintyGrowthScale() { synchronized(lock) {return MotionSensorPolicy.uncertaintyGrowthScale(degradedRotation,gravityFallback,"known".equals(headingAccuracy));} }

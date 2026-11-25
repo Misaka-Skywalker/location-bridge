@@ -62,11 +62,11 @@ public final class LocationService extends Service {
         gnss = new NativeGnssMonitor(this);
         inertialEnabled = getSharedPreferences("native_inertial", MODE_PRIVATE).getBoolean("enabled", true);
         motion = new NativeMotionSensors(this, new NativeMotionSensors.Listener() {
-            @Override public void onSample(long elapsed, double east, double north) {
+            @Override public void onSample(long elapsed, double east, double north, double magnitude, double angularSpeed) {
                 synchronized (LocationService.this) {
                     if (running && inertialEnabled) {
                         deadReckoning.setUncertaintyGrowthScale(motion.uncertaintyGrowthScale());
-                        deadReckoning.acceleration(elapsed,east,north,SystemClock.elapsedRealtimeNanos());
+                        deadReckoning.acceleration(elapsed,east,north,magnitude,angularSpeed,SystemClock.elapsedRealtimeNanos());
                     }
                 }
             }
@@ -366,7 +366,8 @@ public final class LocationService extends Service {
         if (out.positionFilter!=null) sample.put("position_filter",out.positionFilter);
         if (p!=null) sample.put("accuracy_kind","model_estimate").put("anchor_source","gps")
                 .put("anchor_elapsed_realtime_nanos",p.anchorElapsed).put("prediction_age_ms",p.predictionAgeMillis)
-                .put("speed_m_s",p.speedMetersPerSecond).put("bearing_deg",p.bearingDegrees);
+                .put("speed_m_s",p.speedMetersPerSecond).put("bearing_deg",p.bearingDegrees)
+                .put("acceleration_coasting",p.accelerationCoasting).put("acceleration_coasted_ms",p.accelerationCoastedMillis);
         return sample;
     }
     private JSONObject inertialPositionJson(DeadReckoning.Prediction p) throws Exception {
@@ -374,7 +375,8 @@ public final class LocationService extends Service {
                 .put("accuracy_m",p.uncertaintyMeters).put("accuracy_kind","model_estimate")
                 .put("speed_m_s",p.speedMetersPerSecond).put("bearing_deg",p.bearingDegrees)
                 .put("elapsed_realtime_nanos",p.elapsed).put("anchor_elapsed_realtime_nanos",p.anchorElapsed)
-                .put("prediction_age_ms",p.predictionAgeMillis);
+                .put("prediction_age_ms",p.predictionAgeMillis)
+                .put("acceleration_coasting",p.accelerationCoasting).put("acceleration_coasted_ms",p.accelerationCoastedMillis);
     }
     private Object correctionJson(DeadReckoning.Deviation d) throws Exception {
         if(d==null) return JSONObject.NULL;

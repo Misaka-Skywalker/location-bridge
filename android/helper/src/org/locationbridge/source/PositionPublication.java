@@ -9,6 +9,7 @@ final class PositionPublication {
     private static final long MOTION_FRESH = 1_500_000_000L;
     private static final double REST_SMOOTHING_SECONDS = 5;
     private final GroundTrackFilter straightTrack = new GroundTrackFilter();
+    private final VelocityTrackFilter velocityTrack = new VelocityTrackFilter();
     private long lastSpeedTime, stillSince;
     static final class Output {
         final Selector.Fix measured, position;
@@ -27,11 +28,15 @@ final class PositionPublication {
     private final Map<String,Long> lastElapsed = new HashMap<>();
     private long sequence;
     private Output last;
-    synchronized void clearGpsMotion() { stillSince=0; lastSpeedTime=0; straightTrack.reset(); }
+    synchronized void clearGpsMotion() {
+        stillSince=0; lastSpeedTime=0;
+        straightTrack.reset(); velocityTrack.reset();
+    }
     synchronized void observeGpsMotion(long elapsed, long now, double speed, double speedAccuracy,
                                        double course, double courseAccuracy) {
         if (elapsed <= lastSpeedTime || elapsed <= 0 || elapsed > now) return;
         straightTrack.observeVelocity(elapsed,speed,speedAccuracy,course,courseAccuracy,now);
+        velocityTrack.observe(elapsed,now,speed,speedAccuracy,course,courseAccuracy);
         boolean quiet = now-elapsed <= MOTION_FRESH && speed >= 0 && speed <= 0.2
                 && speedAccuracy >= 0 && speed+2*speedAccuracy <= 0.75;
         if (!quiet) stillSince=0;
@@ -59,7 +64,10 @@ final class PositionPublication {
                 return new Output(fix,position,null,++sequence,"stationary");
             }
         }
-        Selector.Fix position=straightTrack.apply(last==null?null:last.position,fix,now);
+        Selector.Fix previous=last==null?null:last.position;
+        Selector.Fix position=velocityTrack.apply(previous,fix,now);
+        if (position!=null) return new Output(fix,position,null,++sequence,position==fix?null:"velocity_track");
+        position=straightTrack.apply(previous,fix,now);
         return new Output(fix,position,null,++sequence,position==fix?null:"cross_track");
     }
     synchronized Output select(Selector.Fix measured,DeadReckoning.Prediction prediction,long now) {
@@ -69,7 +77,9 @@ final class PositionPublication {
                 || now-prediction.elapsed>500_000_000L
                 || prediction.elapsed-prediction.anchorElapsed<=1_500_000_000L)) prediction=null;
         if (measured!=null) prediction=null;
-        if (measured==null || last!=null && !measured.source.equals(last.source)) straightTrack.reset();
+        if (measured==null || last!=null && !measured.source.equals(last.source)) {
+            straightTrack.reset(); velocityTrack.reset();
+        }
         if (measured==null && prediction==null) { last=null; return null; }
         String source=measured!=null?measured.source:"inertial";
         long elapsed=measured!=null?measured.elapsed:prediction.elapsed;

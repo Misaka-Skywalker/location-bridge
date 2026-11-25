@@ -2,6 +2,7 @@ package org.locationbridge.source;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.Iterator;
 
 /** Recent rotation matrices; owned by the sensor adapter's serialized handler. */
 final class MotionOrientationHistory {
@@ -37,6 +38,17 @@ final class MotionOrientationHistory {
         }
         angularRates.addLast(new AngularRate(time,device));
         if (angularRates.size()>MAX_GYRO_SAMPLES) angularRates.removeFirst();
+    }
+
+    double angularSpeedAt(long time) {
+        for (Iterator<AngularRate> recent=angularRates.descendingIterator();recent.hasNext();) {
+            AngularRate sample=recent.next();
+            if (sample.time>time) continue;
+            if (time-sample.time>MAX_GYRO_GAP) break;
+            float[] rate=sample.device;
+            return Math.hypot(Math.hypot(rate[0],rate[1]),rate[2]);
+        }
+        return Double.NaN;
     }
 
     float[] at(long time) {

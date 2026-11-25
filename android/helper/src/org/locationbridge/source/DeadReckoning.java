@@ -10,18 +10,24 @@ final class DeadReckoning {
     private static final long HISTORY_WINDOW = 2*S;
     private static final int MAX_HISTORY_FRAMES = 512;
     private static final double MAX_SPEED=450, MAX_ACCEL=15;
+    private static final long MAX_ACCEL_PAIR_GAP=125_000_000L, DISTURBANCE_HOLD=150_000_000L;
+    private static final double FAST_ROTATION=2, ACCEL_NORM_JERK=20, MIN_ACCEL_NORM_CHANGE=.5;
     private static final double WGS84_A=6378137.0, WGS84_E2=6.6943799901413165e-3;
 
     static final class Prediction {
         final double latitude,longitude,uncertaintyMeters,speedMetersPerSecond,bearingDegrees;
         final long elapsed,anchorElapsed,timestampMillis;
         final double predictionAgeMillis;
+        final boolean accelerationCoasting;
+        final long accelerationCoastedMillis;
         Prediction(double latitude,double longitude,double uncertaintyMeters,double speedMetersPerSecond,
-                   double bearingDegrees,long elapsed,long anchorElapsed,long timestampMillis,double predictionAgeMillis) {
+                   double bearingDegrees,long elapsed,long anchorElapsed,long timestampMillis,double predictionAgeMillis,
+                   boolean accelerationCoasting,long accelerationCoastedMillis) {
             this.latitude=latitude; this.longitude=longitude; this.uncertaintyMeters=uncertaintyMeters;
             this.speedMetersPerSecond=speedMetersPerSecond; this.bearingDegrees=bearingDegrees;
             this.elapsed=elapsed; this.anchorElapsed=anchorElapsed; this.timestampMillis=timestampMillis;
             this.predictionAgeMillis=predictionAgeMillis;
+            this.accelerationCoasting=accelerationCoasting; this.accelerationCoastedMillis=accelerationCoastedMillis;
         }
     }
     static final class Deviation {
@@ -33,8 +39,12 @@ final class DeadReckoning {
         }
     }
     private static final class Frame {
-        final long time; final double east,north;
-        Frame(long time,double east,double north) { this.time=time; this.east=east; this.north=north; }
+        final long time;
+        final double east,north,magnitude;
+        final boolean coasting;
+        Frame(long time,double east,double north,double magnitude,boolean coasting) {
+            this.time=time; this.east=east; this.north=north; this.magnitude=magnitude; this.coasting=coasting;
+        }
     }
     private static final class Position {
         final long time; final double lat,lon;
@@ -42,14 +52,15 @@ final class DeadReckoning {
     }
     private final ArrayDeque<Frame> history=new ArrayDeque<>();
     private final ArrayDeque<Position> positions=new ArrayDeque<>();
-    private long lastFrame, historyCutoff;
+    private long lastFrame, historyCutoff, lastDisturbance, coastedNanos;
     private Selector.Fix origin;
     private long lastAcceptedAnchor, lastSensor;
     private double latitude,longitude,velocityEast,velocityNorth,anchorSpeed,anchorSpeedAccuracy,anchorBearingAccuracy;
     private double currentGrowthScale=1, anchorGrowthScale=1;
+    private double coastingPositionUncertainty;
     private Deviation deviation;
     private String status="waiting_anchor";
-    private boolean active;
+    private boolean active, coasting;
 
     synchronized void setUncertaintyGrowthScale(double scale) {
         currentGrowthScale=Double.isFinite(scale)?Math.max(1,scale):2;
@@ -80,13 +91,22 @@ final class DeadReckoning {
         velocityEast=stationary?0:speed*Math.sin(radians);velocityNorth=stationary?0:speed*Math.cos(radians);
         anchorSpeed=stationary?0:speed;anchorSpeedAccuracy=speedAccuracy+(stationary?speed:0);
         anchorBearingAccuracy=stationary?0:bearingAccuracy;anchorGrowthScale=currentGrowthScale;
+        coasting=false;coastedNanos=0;coastingPositionUncertainty=0;
         active=true;status="gnss_fresh";
         positions.clear();positions.addLast(new Position(lastSensor,latitude,longitude));
-        for (Frame frame:history) if (frame.time>gps.elapsed && !integrate(frame.time,frame.east,frame.north)) return false;
+        Frame previous=null;
+        for (Frame frame:history) {
+            if (frame.time>gps.elapsed && !integrate(frame,previous)) return false;
+            previous=frame;
+        }
         if(next!=null) deviation=next;
         return true;
     }
     synchronized boolean acceleration(long elapsed,double accelerationEast,double accelerationNorth,long now) {
+        return acceleration(elapsed,accelerationEast,accelerationNorth,Double.NaN,Double.NaN,now);
+    }
+    synchronized boolean acceleration(long elapsed,double accelerationEast,double accelerationNorth,
+                                      double accelerationMagnitude,double angularSpeed,long now) {
         if (elapsed<=0 || now<elapsed || now-elapsed>MAX_SENSOR_AGE || (lastFrame!=0 && elapsed<=lastFrame)) {
             invalidate("sensor_timing");return false;
         }
@@ -96,7 +116,19 @@ final class DeadReckoning {
         }
         long continuityStart = active ? Math.max(lastFrame, origin.elapsed) : lastFrame;
         if (continuityStart > 0 && elapsed - continuityStart > MAX_GAP) invalidate("sensor_timing");
-        lastFrame=elapsed;history.addLast(new Frame(elapsed,accelerationEast,accelerationNorth));
+        Frame previous=history.peekLast();
+        // An acceleration norm change is independent of phone orientation. Only use it to
+        // discard data when a recent gyro reading also shows fast rotation.
+        if (previous!=null && elapsed-previous.time<=MAX_ACCEL_PAIR_GAP
+                && Double.isFinite(angularSpeed) && angularSpeed>=FAST_ROTATION
+                && Double.isFinite(accelerationMagnitude) && Double.isFinite(previous.magnitude)) {
+            double dt=(elapsed-previous.time)/(double)S;
+            if (Math.abs(accelerationMagnitude-previous.magnitude)>=Math.max(MIN_ACCEL_NORM_CHANGE,ACCEL_NORM_JERK*dt))
+                lastDisturbance=elapsed;
+        }
+        Frame frame=new Frame(elapsed,accelerationEast,accelerationNorth,accelerationMagnitude,
+                lastDisturbance>0 && elapsed-lastDisturbance<DISTURBANCE_HOLD);
+        lastFrame=elapsed;history.addLast(frame);
         while (history.size() > MAX_HISTORY_FRAMES || elapsed-history.peekFirst().time > HISTORY_WINDOW) {
             Frame removed = history.removeFirst();
             historyCutoff = Math.max(historyCutoff, removed.time);
@@ -104,10 +136,10 @@ final class DeadReckoning {
         if(!active || origin==null) return false;
         if(elapsed<=origin.elapsed) return true;
         if(now<origin.elapsed || elapsed-lastSensor>MAX_GAP) {invalidate("sensor_timing");return false;}
-        return integrate(elapsed,accelerationEast,accelerationNorth);
+        return integrate(frame,previous);
     }
     private static double wrap(double lon) {return ((lon+180)%360+360)%360-180;}
-    private static double[] offset(double lat,double lon,double east,double north) {
+    static double[] offset(double lat,double lon,double east,double north) {
         double rad=Math.toRadians(lat),sin=Math.sin(rad),denom=1-WGS84_E2*sin*sin;
         double m=WGS84_A*(1-WGS84_E2)/Math.pow(denom,1.5);
         double mid=Math.toRadians(lat+Math.toDegrees(north/m)/2);
@@ -116,13 +148,33 @@ final class DeadReckoning {
         double n=WGS84_A/Math.sqrt(denom);
         return new double[]{lat+Math.toDegrees(north/m),wrap(lon+Math.toDegrees(east/(n*Math.cos(mid))))};
     }
-    private boolean integrate(long elapsed,double ae,double an) {
-        double dt=(elapsed-lastSensor)/(double)S;
+    private boolean integrate(Frame frame,Frame previous) {
+        long elapsed=frame.time;
+        long interval=elapsed-lastSensor;
+        double dt=interval/(double)S;
+        double ae=0,an=0;
+        if (!frame.coasting) {
+            ae=frame.east; an=frame.north;
+            if (previous!=null && !previous.coasting && elapsed-previous.time<=MAX_ACCEL_PAIR_GAP) {
+                // Average the endpoints of the elapsed interval to damp high-frequency
+                // vibration without holding samples or delaying a sustained change.
+                double weight=0.5*interval/(elapsed-previous.time);
+                ae+=(previous.east-ae)*weight;
+                an+=(previous.north-an)*weight;
+            }
+        }
         double ve=velocityEast+ae*dt,vn=velocityNorth+an*dt;
         if(!Double.isFinite(ve) || !Double.isFinite(vn) || Math.hypot(ve,vn)>MAX_SPEED) {invalidate("speed_limit");return false;}
         double[] p=offset(latitude,longitude,(velocityEast+ve)*dt/2,(velocityNorth+vn)*dt/2);
         if(!Double.isFinite(p[0]) || !Double.isFinite(p[1]) || Math.abs(p[0])>85) {invalidate("latitude_limit");return false;}
         latitude=p[0];longitude=p[1];velocityEast=ve;velocityNorth=vn;lastSensor=elapsed;
+        // An unobserved acceleration can leave a velocity error that persists until GNSS.
+        coastingPositionUncertainty+=MAX_ACCEL*(coastedNanos/(double)S)*dt;
+        if (frame.coasting) {
+            coastingPositionUncertainty+=0.5*MAX_ACCEL*dt*dt;
+            coastedNanos+=interval;
+        }
+        coasting=frame.coasting;
         positions.addLast(new Position(elapsed,latitude,longitude));
         while(positions.size()>MAX_HISTORY_FRAMES || elapsed-positions.peekFirst().time>HISTORY_WINDOW) positions.removeFirst();
         return true;
@@ -130,7 +182,7 @@ final class DeadReckoning {
     private double uncertainty() {
         double t=(lastSensor-origin.elapsed)/(double)S;
         return origin.accuracy+(Math.max(anchorSpeedAccuracy,0.5)+anchorSpeed*Math.sin(Math.toRadians(anchorBearingAccuracy)))*t
-                +1.5*anchorGrowthScale*t*t;
+                +1.5*anchorGrowthScale*t*t+coastingPositionUncertainty;
     }
     private String evaluate(long now) {
         if(!active || origin==null) return status;
@@ -149,7 +201,7 @@ final class DeadReckoning {
         if(origin.timestamp>Long.MAX_VALUE-millis) {invalidate("timestamp_overflow");return null;}
         return new Prediction(latitude,longitude,uncertainty(),Math.hypot(velocityEast,velocityNorth),
                 (Math.toDegrees(Math.atan2(velocityEast,velocityNorth))+360)%360,lastSensor,origin.elapsed,
-                origin.timestamp+millis,(lastSensor-origin.elapsed)/1_000_000.0);
+                origin.timestamp+millis,(lastSensor-origin.elapsed)/1_000_000.0,coasting,coastedNanos/1_000_000L);
     }
     synchronized Prediction predict(long now) {
         Prediction p=estimate(now);
@@ -186,7 +238,7 @@ final class DeadReckoning {
     synchronized Deviation lastDeviation() {return deviation;}
     synchronized long lastAnchorNanos() {return lastAcceptedAnchor;}
     synchronized void invalidate(String reason) {
-        active=false;historyCutoff=Math.max(historyCutoff,lastFrame);history.clear();positions.clear();
+        active=false;lastDisturbance=0;historyCutoff=Math.max(historyCutoff,lastFrame);history.clear();positions.clear();
         status=reason==null || reason.isEmpty()?"invalidated":reason;
     }
     synchronized void invalidate(String reason,long elapsedNanos) {

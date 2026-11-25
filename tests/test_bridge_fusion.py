@@ -25,6 +25,16 @@ def snapshot():
                       'elapsed_realtime_nanos':118_000_000_000,'timestamp_ms':123456,'is_mock':False,'coordinate_system':'WGS84'}}
 
 class ValidationTests(unittest.TestCase):
+    def test_forwards_smoothed_sample_with_original_quality(self):
+        value = snapshot()
+        value['native_sample'] = value['sample'].copy()
+        value['sample'].update(latitude=30.10004, longitude=104.19998, position_filter='velocity_track')
+        fix, token = fusion.parse_snapshot(value, 'run-id', 9, 500.0, 0.25)
+        self.assertEqual((fix['latitude'], fix['longitude']), (30.10004, 104.19998))
+        self.assertEqual(fix['accuracy_m'], value['native_sample']['accuracy_m'])
+        self.assertEqual(fix['age_at_receive_ms'], 2250)
+        self.assertEqual(token, (RUN, 2))
+
     def test_age_and_repeat_token(self):
         fix, token = fusion.parse_snapshot(snapshot(),'run-id',9,500.0,0.25)
         self.assertEqual(token,(RUN,2))

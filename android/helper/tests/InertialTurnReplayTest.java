@@ -55,12 +55,14 @@ public final class InertialTurnReplayTest {
             float[] linear=toDevice(orientation(angle,roll),
                     AIRSPEED*rate*Math.cos(angle),-AIRSPEED*rate*Math.sin(angle),0);
             double[] en=MotionTransform.horizontal(attitude.at(time),linear,0);
-            check(ins.acceleration(time,en[0],en[1],time),"continuous turn sensor frame");
+            check(ins.acceleration(time,en[0],en[1],Math.abs(AIRSPEED*rate),attitude.angularSpeedAt(time),time),
+                    "continuous turn sensor frame");
             if (anchorDelaySteps>=0 && time==recalibration+anchorDelaySteps*STEP)
                 turnAnchor(ins,rate,recalibration,time);
         }
         DeadReckoning.Prediction prediction=ins.predict(end);
-        check(prediction!=null && prediction.elapsed==end,"turn continues during GNSS dropout");
+        check(prediction!=null && prediction.elapsed==end && prediction.accelerationCoastedMillis==0,
+                "a coordinated turn keeps the acceleration observable during GNSS dropout");
         return prediction;
     }
 
@@ -94,7 +96,8 @@ public final class InertialTurnReplayTest {
             attitude.addGyroscope(time,angularRate,20);
             float[] linear=toDevice(rollOnly?orientation(0,angle):orientation(angle,0),0,1,.5);
             double[] en=MotionTransform.horizontal(attitude.at(time),linear,0);
-            check(ins.acceleration(time,en[0],en[1],time),"continuous straight path");
+            check(ins.acceleration(time,en[0],en[1],Math.hypot(1,.5),attitude.angularSpeedAt(time),time),
+                    "continuous straight path");
         }
         DeadReckoning.Prediction prediction=ins.predict(START+4*SECOND);
         check(prediction!=null && Math.abs(prediction.longitude)<1e-10,"device yaw or roll does not turn the path");

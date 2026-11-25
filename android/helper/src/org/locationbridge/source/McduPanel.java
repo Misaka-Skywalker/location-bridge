@@ -260,6 +260,7 @@ final class McduPanel extends LinearLayout {
             if (predicted) state="● 惯性推算中";
             else if ("stationary".equals(positionFilter)) state="● 静止滤波中";
             else if ("cross_track".equals(positionFilter)) state="● 横向滤波中";
+            else if ("velocity_track".equals(positionFilter)) state="● 航迹平滑中";
             else if (s!=null) state="● 手机定位正常";
             else state=running?"● 等待手机定位":"● 手机定位已停止";
             annunciator.setText(Language.tr(state));
@@ -287,11 +288,12 @@ final class McduPanel extends LinearLayout {
             String insState;
             if (!running) insState = "未运行";
             else if (!enabled) insState = "已停用";
+            else if (ins!=null && ins.optBoolean("acceleration_coasting")) insState = "按原速度推算";
             else if (active) insState = "接替中";
             else insState = ins == null ? "等待校准" : "已校准";
             String reason=running && enabled && i!=null?inertialReason(str(i,"reason","waiting_anchor")):"";
             annunciator.setText("● "+(reason.isEmpty()?Language.tr(insState):reason));
-            annunciator.setTextColor(ins!=null && !active && reason.isEmpty()?GREEN:AMBER);
+            annunciator.setTextColor(ins!=null && !ins.optBoolean("acceleration_coasting") && !active && reason.isEmpty()?GREEN:AMBER);
             row(0,Language.tr("纬度"),number(ins,"latitude","%+.5f"),Language.tr("经度"),number(ins,"longitude","%+.5f"));
             row(1,Language.tr("惯导位置不确定度"),distance(ins,"accuracy_m",false),Language.tr("惯导地速"),speed(ins,"speed_m_s"));
             row(2,Language.tr("上次校准位置差"),distance(correction,"distance_m",false),Language.tr("距上次 GNSS 校准"),elapsed(i,"last_anchor_elapsed_realtime_nanos"));

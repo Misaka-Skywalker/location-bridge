@@ -35,6 +35,7 @@ final class LanguageCatalog {
         EN.put("连接失败，请在 Termux 中查看详情", "LINK FAILED — CHECK TERMUX");
         EN.put("推算状态", "INS STATE");
         EN.put("接替中", "IN USE");
+        EN.put("按原速度推算", "INS COAST");
         EN.put("已校准", "ALIGNED");
         EN.put("等待校准", "ALIGN WAIT");
         EN.put("距上次 GNSS 校准", "GNSS UPD AGE");
@@ -170,6 +171,7 @@ final class LanguageCatalog {
         EN.put("● 手机定位正常", "● POS VALID");
         EN.put("● 静止滤波中", "● STATIONARY FILTER");
         EN.put("● 横向滤波中", "● XTK FILTER");
+        EN.put("● 航迹平滑中", "● TRACK SMOOTHING");
         EN.put("● 等待手机定位", "● POS WAIT");
         EN.put("定位来源", "POS SOURCE");
         EN.put("距上次更新", "UPDATE AGE");

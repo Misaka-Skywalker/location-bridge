@@ -69,10 +69,10 @@ public final class GroundPositionTest {
             tick=now+i*S;
             double north=i*6, east=i%2==0?10:-10;
             straight.observeGpsMotion(tick,tick,6,0.1,0,1);
-            Selector.Fix raw=new Selector.Fix("gps",north/METRES_PER_DEGREE,east/METRES_PER_DEGREE,6,tick,false,1000,tick);
+            Selector.Fix raw=new Selector.Fix("gps",north/110574.2758,east/METRES_PER_DEGREE,6,tick,false,1000,tick);
             PositionPublication.Output output=straight.select(raw,null,tick);
             if (i>=15) {
-                check("cross_track".equals(output.positionFilter), "straight track reaches publication");
+                check("velocity_track".equals(output.positionFilter), "velocity-aided straight track reaches publication");
                 check(Math.abs(output.position.longitude*METRES_PER_DEGREE)<5, "reduce cross-track error");
                 check(Math.abs((output.position.latitude-raw.latitude)*METRES_PER_DEGREE)<0.01, "preserve along-track displacement");
             }

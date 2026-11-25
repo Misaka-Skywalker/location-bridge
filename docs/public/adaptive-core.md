@@ -14,7 +14,9 @@ Since 0.6.1, GPS and fused fixes of similar quality keep the active source when 
 
 When GNSS reports near-zero speed continuously for two seconds with usable speed accuracy, the helper smooths successive positions from the same GPS or fused provider with a five-second time constant. Motion, missing speed evidence, a source change or a large correction bypasses smoothing. The POS page indicates when the filter is active. In the snapshot, `sample` contains the forwarded coordinates, `native_sample` contains the raw fix, and `accuracy_m` remains the provider's reported accuracy for that fix.
 
-During slow, straight travel, three seconds of consistent GNSS speed and course can enable a separate cross-track filter. It reduces lateral jitter while preserving distance along the measured course. Each adjustment is limited to 8 m and 1.5 times the reported accuracy, whichever is smaller. Changes in course or speed, a source change and stale motion data interrupt filtering. The POS page identifies the active filter. An iPad on the 0.6.0 Termux bridge receives these changes when the Android helper is upgraded.
+In 0.6.2, the POS page shows **TRACK SMOOTHING** when reliable GNSS ground speed and course cover the interval between two fixes from the same GPS or fused provider. The helper integrates the changing velocity between those measurement times and smooths the difference between the expected and measured positions. This allows a turn or a speed change to appear in the current fix. The adjustment is capped at the smaller of 8 m and 1.5 times the reported accuracy. A source change, a large position correction or a stop passes the first new fix through immediately. The helper retains the original measurement timestamp. [Android speed and bearing accuracy](https://developer.android.com/reference/android/location/Location)
+
+When velocity samples do not bracket the interval, three seconds of consistent low-speed travel can still enable the cross-track filter. It preserves distance along the measured course. An existing 0.6.0 Termux bridge can use both filters after upgrading the helper.
 
 ## GNSS diagnostics
 
@@ -23,6 +25,10 @@ The helper requests GNSS full tracking by default and provides a setting to turn
 The diagnostics summarize available satellite status, observed constellations and bands, raw measurement counts, automatic gain control (AGC) and antenna capabilities when the platform exposes them. The receiver page counts distinct constellation/signal types, not independent RF bands or antenna channels. Satellite totals are deduplicated across signal types. These observations are diagnostics; this is not RTK or a custom raw-observation positioning solver, and a measurement count does not establish position accuracy. [Android GNSS measurements](https://developer.android.com/reference/android/location/GnssMeasurementsEvent) · [Android GNSS capabilities](https://developer.android.com/reference/android/location/GnssCapabilities)
 
 ## Motion and pressure
+
+The INS integrates the average horizontal acceleration over closely spaced sample pairs. This dampens rapid vibration and preserves a sustained acceleration or turn. If fast phone rotation coincides with a sharp change in linear acceleration, the INS can briefly propagate at the last estimated ground velocity. A new disturbance can extend this period. Clean samples resume normal integration 150 ms after the last trigger. The INS page shows **INS COAST** during these intervals, and the modeled position uncertainty grows to account for the missing acceleration. Sensor gaps and excessive horizontal acceleration still invalidate the estimate.
+
+Bench replays cover horizontal vibration, vertical motion with a tilted phone, and a real change in horizontal velocity. The short disturbance detector can also trigger on genuine vehicle motion with similar sensor readings. These checks do not establish performance in flight.
 
 On devices with a calibrated gyroscope, the helper uses recent angular-rate samples to align the attitude with the linear-acceleration timestamp over intervals of up to 100 ms. The resulting horizontal acceleration updates the ground-velocity vector. Rotating the phone alone does not supply a ground-track change. Missing, saturated or unreliable gyroscope samples leave the existing rotation-vector path available.
 
