@@ -14,8 +14,6 @@ final class NativeLocationPolicy {
     private String current, previousSource;
     private static final class Challenge { int count; long first; }
     private final Map<String,Challenge> challenges = new HashMap<>();
-    private String holdSource;
-    private long holdUntil;
     private static final class Recovery {
         Selector.Fix last;
         long first;
@@ -28,6 +26,9 @@ final class NativeLocationPolicy {
 
     private static boolean supported(String source) { return "gps".equals(source)||"fused".equals(source)||"network".equals(source); }
     private static long maxAge(String source) { return "fused".equals(source)?FUSED_MAX:GPS_MAX; }
+    private static boolean materiallyBetter(double candidate,double incumbent) {
+        return candidate<=incumbent*.75 && incumbent-candidate>=5;
+    }
     private double score(Selector.Fix f,long now) { return f.accuracy + agingRate*((now-f.elapsed)/(double)S); }
     synchronized void setAgingRate(double metersPerSecond) {
         agingRate=Double.isFinite(metersPerSecond)?Math.max(20,Math.min(460,metersPerSecond)):20;
@@ -75,19 +76,9 @@ final class NativeLocationPolicy {
         current=f.source; previousSource=f.source;
         if (anchor==null || f.elapsed>anchor.elapsed) anchor=f;
         lastReason="eligible";
-        challenges.clear(); holdSource=null; holdUntil=0;
-    }
-    private void releaseHold() {
-        if (holdSource != null) challenges.remove(holdSource);
-        holdSource=null; holdUntil=0;
+        challenges.clear();
     }
     private Selector.Fix reconcile(long now) {
-        if (holdSource != null) {
-            Selector.Fix heldCandidate=candidates.get(holdSource);
-            if (now < holdUntil && anchor != null && anchor.source.equals(current)
-                    && freshInput(anchor,now) && freshInput(heldCandidate,now) && challenges.containsKey(holdSource)) return anchor;
-            releaseHold();
-        }
         Selector.Fix selected=current==null?null:candidates.get(current);
         if (!fresh(selected,now)) {
             current=null;
@@ -129,10 +120,10 @@ final class NativeLocationPolicy {
                 recoveries.clear();
             } else return reject(f.source,"jump");
         } else { recoveries.clear(); }
-        candidates.put(f.source,f); sourceReasons.put(f.source,"eligible");
+        Selector.Fix previous=candidates.put(f.source,f); sourceReasons.put(f.source,"eligible");
         if (selected==null) { activate(best(now)); return true; }
         if (f.source.equals(current)) {
-            if (holdSource == null && (anchor==null || f.elapsed>anchor.elapsed)) anchor=f;
+            if (anchor==null || f.elapsed>anchor.elapsed) anchor=f;
             lastReason="eligible"; return true;
         }
         // Network is a fallback, never a challenger while a precise GPS/fused fix exists.
@@ -140,25 +131,28 @@ final class NativeLocationPolicy {
         for(String source:new String[]{"gps","fused"}) {
             Selector.Fix x=candidates.get(source); if (freshInput(x,now) && x.accuracy<=100) precise=true;
         }
-        double incumbent=score(selected,now), proposed=score(f,now);
+        // Allow one normal one-second reporting interval of phase difference.
+        // Beyond that interval, age continues to matter, especially at speed.
+        double delta=(f.elapsed-selected.elapsed)/(double)S;
+        double incumbent=selected.accuracy+agingRate*Math.max(0,delta-1);
+        double proposed=f.accuracy+agingRate*Math.max(0,-delta-1);
         boolean primaryOverFallback = "network".equals(selected.source)
                 && ("gps".equals(f.source) || "fused".equals(f.source)) && f.accuracy <= 100;
-        boolean improvedScore = proposed<=incumbent*.75 && incumbent-proposed>=5;
-        if (!("network".equals(f.source) && precise) && (primaryOverFallback || improvedScore)) {
+        if (!("network".equals(f.source) && precise) && (primaryOverFallback || materiallyBetter(proposed,incumbent))) {
             Challenge challenge = challenges.get(f.source);
             if (challenge == null || f.elapsed-challenge.first>maxAge(f.source)) {
                 challenge = new Challenge(); challenge.count=1; challenge.first=f.elapsed;
+                // The incumbent missed an entire reporting cycle before the previous
+                // challenge and still hasn't advanced. Count that observation as well.
+                if (previous!=null && previous.elapsed-selected.elapsed>=S && fresh(previous,now)
+                        && materiallyBetter(previous.accuracy,score(selected,previous.elapsed))) {
+                    challenge.first=previous.elapsed; challenge.count++;
+                }
                 challenges.put(f.source,challenge);
             } else challenge.count++;
-            if (challenge.count>=2 && f.elapsed-challenge.first>=S && (anchor==null || f.elapsed>anchor.elapsed)) {
-                activate(f);
-            } else if (holdSource == null && anchor != null && current != null && anchor.source.equals(current)) {
-                // Briefly preserve the last published fix while a lagging source confirms.
-                holdSource=f.source; holdUntil=now+2*S;
-            }
+            if (challenge.count>=2 && f.elapsed-challenge.first>=S) activate(f);
         } else {
             challenges.remove(f.source);
-            if (f.source.equals(holdSource)) releaseHold();
         }
         return true;
     }
@@ -168,10 +162,8 @@ final class NativeLocationPolicy {
         candidates.remove(source); sourceReasons.put(source,"disabled");
         challenges.remove(source);
         recoveries.remove(source);
-        boolean held = source.equals(holdSource);
-        if (held) releaseHold();
-        if (source.equals(current)) { current=null; releaseHold(); }
-        if (held || current == null) reconcile(now);
+        if (source.equals(current)) current=null;
+        if (current == null) reconcile(now);
     }
     synchronized Selector.Fix selected(long now) { return reconcile(now); }
     synchronized String reason(long now) {

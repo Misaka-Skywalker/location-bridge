@@ -145,8 +145,13 @@ public final class LocationService extends Service {
             providerEpochs.put(name,providerEpochs.getOrDefault(name,0L)+1);
             policy.remove(name,now);
             nativeAltitude.remove(name);
-            if ("gps".equals(name)) gnssAltitude.clear();
-            if ("gps".equals(name)) { if ("permission_missing".equals(reason)) deadReckoning.invalidate(reason,SystemClock.elapsedRealtimeNanos()); gnssMotion=null; profile.clearMotion(); }
+            if ("gps".equals(name)) {
+                gnssAltitude.clear();
+                if ("permission_missing".equals(reason)) deadReckoning.invalidate(reason,now);
+                gnssMotion=null;
+                profile.clearMotion();
+                publication.clearGpsMotion();
+            }
         }
         usable.put(name,false);errors.put(name,reason);
         if (listener != null) try { manager.removeUpdates(listener); } catch (RuntimeException ignored) { }
@@ -214,7 +219,7 @@ public final class LocationService extends Service {
         if (issue != null) { withdraw(name,issue,now); return; }
         if (!loc.hasAccuracy()) {
             policy.remove(name,now);nativeAltitude.remove(name);
-            if ("gps".equals(name)) gnssAltitude.clear();
+            if ("gps".equals(name)) { gnssAltitude.clear(); publication.clearGpsMotion(); }
             return;
         }
         Selector.Fix f = new Selector.Fix(name, loc.getLatitude(), loc.getLongitude(), loc.getAccuracy(),
@@ -223,7 +228,10 @@ public final class LocationService extends Service {
             String reason=policy.sourceReason(name,now);
             if ("jump".equals(reason) || "inaccurate".equals(reason) || "invalid".equals(reason)) {
                 nativeAltitude.remove(name);
-                if ("gps".equals(name)) gnssAltitude.clear();
+                if ("gps".equals(name)) {
+                    gnssAltitude.clear();
+                    publication.clearGpsMotion();
+                }
             }
             return;
         }
@@ -239,6 +247,7 @@ public final class LocationService extends Service {
             double speedAccuracy=loc.hasSpeedAccuracy()?loc.getSpeedAccuracyMetersPerSecond():Double.NaN;
             double bearing=loc.hasBearing()?loc.getBearing():Double.NaN;
             double bearingAccuracy=loc.hasBearingAccuracy()?loc.getBearingAccuracyDegrees():Double.NaN;
+            publication.observeGpsMotion(f.elapsed,now,f.accuracy<=50?speed:Double.NaN,speedAccuracy,bearing,bearingAccuracy);
             if (f.accuracy<=50) profile.observeGpsMotion(speed,speedAccuracy,f.elapsed,now);
             boolean hasHeight=loc.hasAltitude() && Double.isFinite(loc.getAltitude());
             double declination=Double.NaN;
@@ -348,11 +357,13 @@ public final class LocationService extends Service {
         DeadReckoning.Prediction p=out.prediction;
         JSONObject sample=new JSONObject().put("sequence",out.sequence)
                 .put("source",out.source)
-                .put("latitude",f!=null?f.latitude:p.latitude).put("longitude",f!=null?f.longitude:p.longitude)
+                .put("latitude",f!=null?out.position.latitude:p.latitude)
+                .put("longitude",f!=null?out.position.longitude:p.longitude)
                 .put("accuracy_m",f!=null?f.accuracy:p.uncertaintyMeters)
                 .put("elapsed_realtime_nanos",out.elapsed)
                 .put("timestamp_ms",f!=null?f.timestamp:p.timestampMillis)
                 .put("is_mock",false).put("coordinate_system","WGS84");
+        if (out.positionFilter!=null) sample.put("position_filter",out.positionFilter);
         if (p!=null) sample.put("accuracy_kind","model_estimate").put("anchor_source","gps")
                 .put("anchor_elapsed_realtime_nanos",p.anchorElapsed).put("prediction_age_ms",p.predictionAgeMillis)
                 .put("speed_m_s",p.speedMetersPerSecond).put("bearing_deg",p.bearingDegrees);

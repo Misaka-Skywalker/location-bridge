@@ -168,6 +168,8 @@ final class LanguageCatalog {
         EN.put("，当前页面", ", current page");
         EN.put("● 惯性推算中", "● INS IN USE");
         EN.put("● 手机定位正常", "● POS VALID");
+        EN.put("● 静止滤波中", "● STATIONARY FILTER");
+        EN.put("● 横向滤波中", "● XTK FILTER");
         EN.put("● 等待手机定位", "● POS WAIT");
         EN.put("定位来源", "POS SOURCE");
         EN.put("距上次更新", "UPDATE AGE");
@@ -177,6 +179,7 @@ final class LanguageCatalog {
         EN.put("高度来源", "ALT SOURCE");
         EN.put("惯导位置不确定度", "INS EPU");
         EN.put("水平精度", "H ACC");
+        EN.put("原始水平精度", "RAW H ACC");
         EN.put("垂直精度", "V ACC");
         EN.put("真航迹角", "TRK TRUE");
         EN.put("磁航迹角", "TRK MAG");

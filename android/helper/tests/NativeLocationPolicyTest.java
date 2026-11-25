@@ -7,7 +7,24 @@ public final class NativeLocationPolicyTest {
     }
     static void check(boolean b,String msg) { if (!b) throw new AssertionError(msg); }
     static String source(NativeLocationPolicy p,long now) { Selector.Fix f=p.selected(now); return f==null?"none":f.source; }
+    static void cadenceReplay(double agingRate) {
+        long t=100*S;
+        NativeLocationPolicy p=new NativeLocationPolicy();
+        p.setAgingRate(agingRate);
+        check(p.offer(fix("gps",0,0,10,t),t),"cadence GPS start");
+        for (int i=0;i<60;i++) {
+            long fusedTime=t+i*S+S/2;
+            check(p.offer(fix("fused",0,0.00018,10,fusedTime),fusedTime),"cadence fused");
+            long gpsTime=t+(i+1)*S;
+            check(p.offer(fix("gps",0,0,10,gpsTime),gpsTime),"cadence GPS");
+            check(p.selected(gpsTime).elapsed==gpsTime,"incumbent update is timely");
+        }
+        System.out.println("cadence aging="+agingRate+" switches="+p.switchCount());
+        check(p.switchCount()<=1,"equal quality staggered providers should not oscillate");
+    }
     public static void main(String[] args) {
+        cadenceReplay(20);
+        cadenceReplay(252);
         long t=100*S;
         NativeLocationPolicy p=new NativeLocationPolicy();
         check(p.offer(fix("gps",30,104,10,t),t),"initial GPS accepted");
@@ -66,6 +83,14 @@ public final class NativeLocationPolicyTest {
         check(source(fusedTier,t+S+S/2).equals("network"),"two samples under one second cannot switch");
         check(fusedTier.offer(fix("fused",0,0,20,t+2*S),t+2*S),"fused span reaches one second");
         check(source(fusedTier,t+2*S).equals("fused"),"healthy fused outranks network");
+        NativeLocationPolicy latest = new NativeLocationPolicy();
+        latest.setAgingRate(252);
+        check(latest.offer(fix("gps",0,0,10,t),t),"latest incumbent start");
+        check(latest.offer(fix("fused",0,0,30,t+2*S),t+2*S),"temporary age advantage");
+        check(latest.offer(fix("gps",0,0,10,t+2*S+S/2),t+2*S+S/2),"incumbent catches up");
+        check(latest.selected(t+2*S+S/2).elapsed==t+2*S+S/2,"new incumbent is immediately visible");
+        check(latest.offer(fix("fused",0,0,30,t+3*S),t+3*S),"challenger compared with latest incumbent");
+        check(source(latest,t+3*S).equals("gps"),"temporary age advantage does not confirm after incumbent update");
         NativeLocationPolicy metadata = new NativeLocationPolicy();
         check(!metadata.offer(new Selector.Fix("unknown",0,0,1,t,false,1,1),t),"unknown source rejected");
         check(!metadata.offer(new Selector.Fix("gps",0,0,1,t,false,0,1),t),"missing timestamp rejected");
@@ -101,11 +126,11 @@ public final class NativeLocationPolicyTest {
         NativeLocationPolicy delayedGps = new NativeLocationPolicy();
         check(delayedGps.offer(fix("fused",30,104,90,t),t),"lagged case fused starts");
         check(delayedGps.offer(fix("gps",30,104,5,t-S/10),t),"slightly older GPS passes quality check");
-        check(delayedGps.offer(fix("fused",30,104.003,90,t+S),t+S),"airliner incumbent cached while confirming");
-        check(delayedGps.selected(t+S).elapsed==t,"hold does not advance published anchor");
+        check(delayedGps.offer(fix("fused",30,104.003,90,t+S),t+S),"airliner incumbent updates while confirming");
+        check(delayedGps.selected(t+S).elapsed==t+S,"incumbent is published during confirmation");
         check(delayedGps.offer(fix("gps",30,104.0027,5,t+S-S/10),t+S),"second lagging GPS confirm");
         check(source(delayedGps,t+S).equals("gps"),"consistently lagging accurate GPS can take over");
-        check(delayedGps.selected(t+S).elapsed==t+S-S/10,"published timestamp does not regress");
+        check(delayedGps.selected(t+S).elapsed==t+S-S/10,"lagging GPS keeps its actual timestamp");
         long lastPublished=delayedGps.selected(t+S).elapsed;
         for (int i=2; i<=4; i++) {
             long now=t+i*S;
@@ -125,8 +150,8 @@ public final class NativeLocationPolicyTest {
         check(holdTimeout.offer(fix("fused",0,0,90,t),t),"hold timeout baseline");
         check(holdTimeout.offer(fix("gps",0,0,5,t-S/10),t),"start hold");
         check(holdTimeout.offer(fix("fused",0,.0027,90,t+S),t+S),"cache while waiting");
-        check(holdTimeout.selected(t+S).elapsed==t,"hold active");
-        check(holdTimeout.selected(t+2*S+1).elapsed==t+S,"timeout releases latest incumbent");
+        check(holdTimeout.selected(t+S).elapsed==t+S,"challenger does not hold incumbent");
+        check(holdTimeout.selected(t+2*S+1).elapsed==t+S,"latest incumbent remains available");
         NativeLocationPolicy holdRemoved = new NativeLocationPolicy();
         check(holdRemoved.offer(fix("fused",0,0,90,t),t),"remove baseline");
         check(holdRemoved.offer(fix("gps",0,0,5,t-S/10),t),"challenger before disable");

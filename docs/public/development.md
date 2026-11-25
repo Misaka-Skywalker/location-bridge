@@ -12,7 +12,7 @@ The helper supports Android API 31 or newer. Install a JDK 17 or newer, Android 
 python3 android/helper/build.py --sdk /path/to/android-sdk --build-tools 36.0.0
 ```
 
-Alternatively set `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `JAVA_HOME` selects the JDK. The output is `android/apks/location-bridge-source-0.6.0.apk`. The build creates a local signing key; retain it securely for upgrades and never commit or share it. Use `--unsigned` for CI builds that do not need an installable signed APK. SDKs, keys and APKs are not shipped in this source release.
+Alternatively set `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `JAVA_HOME` selects the JDK. The output is `android/apks/location-bridge-source-0.6.1.apk`. The build creates a local signing key; retain it securely for upgrades and never commit or share it. Use `--unsigned` for CI builds that do not need an installable signed APK. SDKs, keys and APKs are not shipped in this source release.
 
 ## Runtime preparation
 

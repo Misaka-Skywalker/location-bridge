@@ -242,6 +242,7 @@ final class McduPanel extends LinearLayout {
         JSONObject ins=obj(i,"position"),correction=obj(i,"last_correction");
         running=snapshot!=null&&snapshot.optBoolean("running");
         boolean predicted="inertial".equals(str(s,"source",""));
+        String positionFilter=str(s,"position_filter","");
         boolean active=i!=null&&i.optBoolean("active");
         String operation=running?Language.tr("停止定位"):Language.tr("启动定位");
         runLabel.setText("‹ "+operation);runLabel.setContentDescription(operation);runKey.setContentDescription(operation);
@@ -255,7 +256,13 @@ final class McduPanel extends LinearLayout {
             navigation[index].setContentDescription(PAGE_NAMES[index]+(selected?Language.tr("，当前页面"):Language.tr("页面")));
         }
         if(!page.equals("INS")){
-            annunciator.setText(predicted?Language.tr("● 惯性推算中"):s!=null?Language.tr("● 手机定位正常"):running?Language.tr("● 等待手机定位"):Language.tr("● 手机定位已停止"));
+            String state;
+            if (predicted) state="● 惯性推算中";
+            else if ("stationary".equals(positionFilter)) state="● 静止滤波中";
+            else if ("cross_track".equals(positionFilter)) state="● 横向滤波中";
+            else if (s!=null) state="● 手机定位正常";
+            else state=running?"● 等待手机定位":"● 手机定位已停止";
+            annunciator.setText(Language.tr(state));
             annunciator.setTextColor(s!=null&&!predicted?GREEN:AMBER);
         }
         String note="";
@@ -264,7 +271,7 @@ final class McduPanel extends LinearLayout {
             row(0,Language.tr("定位来源"),source(s),Language.tr("距上次更新"),age(s));
             row(1,Language.tr("纬度"),number(s,"latitude","%+.5f"),Language.tr("经度"),number(s,"longitude","%+.5f"));
             row(2,Language.tr("高度"),number(h,"altitude_m","%.1f m"),Language.tr("高度来源"),source(h));
-            row(3,predicted?Language.tr("惯导位置不确定度"):Language.tr("水平精度"),distance(s,"accuracy_m",false),Language.tr("垂直精度"),number(h,"vertical_accuracy_m","%.1f m"));
+            row(3,predicted?Language.tr("惯导位置不确定度"):!positionFilter.isEmpty()?Language.tr("原始水平精度"):Language.tr("水平精度"),distance(s,"accuracy_m",false),Language.tr("垂直精度"),number(h,"vertical_accuracy_m","%.1f m"));
             row(4,Language.tr("真航迹角"),number(g,"bearing_deg","%.1f°"),Language.tr("磁航迹角"),number(g,"magnetic_bearing_deg","%.1f°"));
             row(5,Language.tr(predicted?"惯导地速":"GNSS 地速"),speed(predicted?s:g,"speed_m_s"),Language.tr("推算时长"),predicted?DisplayUnits.duration(s.optDouble("prediction_age_ms")/1000):"---");
         }else if(page.equals("GNSS")){

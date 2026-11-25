@@ -8,6 +8,14 @@
 
 助手在可用时向 Android 平台 GPS、fused 和 network 提供器请求高精度定位，检查候选位置的时效和质量后选源。近期通过质量检查的 GNSS 地速越高，比较候选位置时对数据年龄的惩罚可越大；原始测量报告的 accuracy 保留不变。GPS 和 fused 的请求间隔按近期位置和速度在 500 毫秒与 1,000 毫秒间自适应切换，并设置滞回；network 仍请求 1,000 毫秒。这些是请求间隔，不保证 2 Hz 或任何特定实际频率；提供器、系统和电源管理均会影响结果。[Android LocationRequest 文档](https://developer.android.com/reference/android/location/LocationRequest.Builder)
 
+## 来源切换与静止漂移
+
+自 0.6.1 起，GPS 和系统融合定位精度相近且采样时间相差一秒以内时，助手继续使用当前来源。确认候选来源期间，当前来源的新位置照常发送。候选来源连续提供更好的精度，或当前来源停止更新时，助手可以切换。
+
+当 GNSS 连续两秒报告接近零的地速，且速度精度足以判断静止时，助手对同一 GPS 或系统融合来源的连续坐标进行时间常数为五秒的平滑。检测到移动、缺少有效速度、切换来源或出现较大的位置修正时，直接使用实测坐标。位置页会显示「静止滤波中」。快照中的 `sample` 是转发坐标，`native_sample` 保留原始坐标，`accuracy_m` 表示定位来源为原始测量报告的水平精度。
+
+低速直行时，GNSS 地速和航迹角连续稳定三秒后，助手可以平滑垂直于航迹的横向偏移，保留实测位置沿航迹方向的位移。每个点最多修正 8 米，同时不超过原始水平精度的 1.5 倍。航迹角或速度明显变化、切换来源、运动数据过期时，退出横向滤波。位置页显示当前滤波状态。已使用 0.6.0 Termux 脚本的设备升级定位助手即可生效。
+
 ## GNSS 诊断
 
 助手默认请求 GNSS 连续跟踪，可在设置中关闭该请求。请求被接受不代表系统一定报告实际跟踪状态，报告值可能保持未知。关闭本助手的请求不会强制其他应用或固件退出连续跟踪。连续跟踪可能增加耗电，其实际行为取决于设备和系统。[Android 连续跟踪文档](https://developer.android.com/reference/android/location/GnssMeasurementRequest.Builder#setFullTracking(boolean))
@@ -15,6 +23,8 @@
 平台提供数据时，诊断会汇总卫星状态、观测到的星座和频段、原始测量数量、自动增益控制（AGC）及天线能力。接收机页面的信号类型按星座和信号名称区分，不代表独立射频频段或天线通道数量；卫星数量已跨信号去重。这些仅是诊断信息；本项目不是 RTK，也不自行解算原始观测值，测量数量不能证明定位精度。[Android GNSS 测量](https://developer.android.com/reference/android/location/GnssMeasurementsEvent) · [Android GNSS 能力](https://developer.android.com/reference/android/location/GnssCapabilities)
 
 ## 运动传感器和气压
+
+手机提供校准陀螺仪时，助手用近期的三轴角速度把姿态对齐到线加速度的采样时刻，最多补偿 100 毫秒。随后用地理坐标系下的水平加速度更新对地速度矢量。单独旋转手机不会直接改变航迹。陀螺仪缺帧、饱和或精度不足时，继续使用原有旋转矢量。
 
 优先使用系统旋转矢量和线性加速度。Android 旋转矢量是融合姿态传感器，通常使用陀螺仪和磁场等输入；底层实现和可用传感器因设备而异。首选数据流缺失或注册失败时，可在满足质量与时效门控的条件下使用地磁旋转矢量，或从加速度计数据中减去时间匹配的重力样本。[Android 位置传感器](https://developer.android.com/develop/sensors-and-location/sensors/sensors_position) · [Android 运动传感器](https://developer.android.com/develop/sensors-and-location/sensors/sensors_motion)
 
