@@ -21,6 +21,9 @@ public final class DeadReckoningTest {
         check(Math.abs(p.speedMetersPerSecond-300)<1e-8 && Math.abs(p.bearingDegrees-90)<1e-8,"east bearing/speed");
         check(Math.abs(p.uncertaintyMeters-13)<1e-8,"conservative uncertainty growth");
         check(p.elapsed==T+2*S && p.anchorElapsed==T && p.timestampMillis==1_700_000_002_000L,"timestamps retain origin");
+        check(dr.observeEstimate(T+3*S)==null && "sensor_stale".equals(dr.observeReason(T+3*S)),
+                "a diagnostic snapshot marks unavailable motion");
+        check(dr.observeEstimate(T+2*S)!=null,"observing a gap must not invalidate the live filter");
         DeadReckoning.Prediction again=dr.predict(T+2*S+100_000_000L);
         check(again!=null && again.elapsed==p.elapsed && again.longitude==p.longitude && again.predictionAgeMillis==2000.0 && again.uncertaintyMeters==p.uncertaintyMeters,"polling does not advance position or model age");
         check(dr.predict(T+2*S+600_000_000L)==null,"stale sensor rejected");

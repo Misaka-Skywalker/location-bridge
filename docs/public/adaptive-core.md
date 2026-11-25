@@ -53,3 +53,19 @@ Ground speed is displayed simultaneously in km/h and kts; protocol fields and ca
 Offline regression tests cover a one-hour synthetic track, growing uncertainty, delayed GNSS correction, measured-source priority and stale-motion rejection. They do not validate physical sensor drift or sustained operation on a moving phone.
 
 Root access is not required. The helper does not invoke `su` or modify a vendor HAL. The core has not been tested on a Redmi K60 Pro, and the same sensor availability, accuracy or performance should not be assumed across models.
+
+## Flight test logs
+
+Choose **SETUP → Test logs → Start recording**. The panel shows **TEST LOG RECORDING**. The Android foreground location service can record with the screen off and with Termux and the iPad disconnected. To finish, use **Stop recording**, then **Export a saved log**. Choose the session time and save location. Each start creates a separate file. Allow sufficient battery and free storage for the session.
+
+To measure drift during a GNSS outage, start where satellites are visible and confirm alignment on the INS page. Keep recording through GNSS reacquisition and the next alignment. **LAST POS Δ** shows the horizontal difference between the pre-update INS position and the time-matched GNSS fix in metric units and nautical miles (1 NM = 1852 m). East and north components retain their signs. INS EPU reports the model’s estimated uncertainty. A cold start without a qualifying GNSS anchor can establish sensor availability and continuity. An absolute trajectory and measured drift require a reference.
+
+Exports use UTF-8 JSONL with one object per line. Align streams using monotonic nanoseconds since device boot and use UTC milliseconds for external time references. Recordings include actual locations and motion data and stay in app-private storage until exported.
+
+| Record type | Contents |
+| --- | --- |
+| `session_start`, `session_info`, `session_end` | Schema, app version and session bounds. The footer includes the total number of dropped records. Complete lines can be recovered after an interruption. |
+| `motion` | Subscribed device-frame motion streams, each capped at 20 Hz. Acceleration is in m/s², calibrated gyro rates in rad/s. Rotation vectors include a quaternion and reported heading accuracy in radians (−1 if unavailable). Data collection can precede INS alignment. |
+| `fix` | Accepted native GPS, fused and network measurements with time, coordinates, horizontal accuracy and available velocity, track and accuracy fields. `anchor_applied` marks a successful INS update. A time-matched pre-update residual is included when available. |
+| `navigation` | Approximately one sample per second with native selection, provider states, satellite and sensor diagnostics, most recent anchor time, INS solution, estimated uncertainty and last position difference. Missing data is `null`. |
+| `samples_dropped`, `recording_stop` | Cumulative queue drops and the reason recording ended normally. Per-stream timestamps also expose sampling gaps. |

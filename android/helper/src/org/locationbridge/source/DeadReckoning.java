@@ -184,21 +184,37 @@ final class DeadReckoning {
         return origin.accuracy+(Math.max(anchorSpeedAccuracy,0.5)+anchorSpeed*Math.sin(Math.toRadians(anchorBearingAccuracy)))*t
                 +1.5*anchorGrowthScale*t*t+coastingPositionUncertainty;
     }
-    private String evaluate(long now) {
+    synchronized String observeReason(long now) {
         if(!active || origin==null) return status;
-        if(now<origin.elapsed || now<lastSensor) {invalidate("clock_error");return status;}
+        if(now<origin.elapsed || now<lastSensor) return "clock_error";
         if(lastSensor==origin.elapsed || now-lastSensor>MAX_SENSOR_AGE) {
             if(now-origin.elapsed<=GNSS_FRESH) return "gnss_fresh";
-            invalidate("sensor_stale");return status;
+            return "sensor_stale";
         }
-        if(!Double.isFinite(uncertainty())) {invalidate("numeric_error");return status;}
+        if(!Double.isFinite(uncertainty())) return "numeric_error";
         return lastSensor-origin.elapsed<=GNSS_FRESH?"gnss_fresh":"eligible";
+    }
+    private String evaluate(long now) {
+        String reason=observeReason(now);
+        if(active && !"gnss_fresh".equals(reason) && !"eligible".equals(reason)) invalidate(reason);
+        return reason;
     }
     synchronized Prediction estimate(long now) {
         evaluate(now);
+        if(active && origin!=null && origin.timestamp>Long.MAX_VALUE-(lastSensor-origin.elapsed)/1_000_000L) {
+            invalidate("timestamp_overflow");return null;
+        }
+        return currentEstimate(now);
+    }
+    synchronized Prediction observeEstimate(long now) {
+        String reason=observeReason(now);
+        if(!"gnss_fresh".equals(reason) && !"eligible".equals(reason)) return null;
+        return currentEstimate(now);
+    }
+    private Prediction currentEstimate(long now) {
         if(!active || origin==null || now-lastSensor>MAX_SENSOR_AGE) return null;
         long millis=(lastSensor-origin.elapsed)/1_000_000L;
-        if(origin.timestamp>Long.MAX_VALUE-millis) {invalidate("timestamp_overflow");return null;}
+        if(origin.timestamp>Long.MAX_VALUE-millis) return null;
         return new Prediction(latitude,longitude,uncertainty(),Math.hypot(velocityEast,velocityNorth),
                 (Math.toDegrees(Math.atan2(velocityEast,velocityNorth))+360)%360,lastSensor,origin.elapsed,
                 origin.timestamp+millis,(lastSensor-origin.elapsed)/1_000_000.0,coasting,coastedNanos/1_000_000L);

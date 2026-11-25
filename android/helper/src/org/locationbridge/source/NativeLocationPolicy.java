@@ -166,6 +166,10 @@ final class NativeLocationPolicy {
         if (current == null) reconcile(now);
     }
     synchronized Selector.Fix selected(long now) { return reconcile(now); }
+    synchronized Selector.Fix currentFix(long now) {
+        Selector.Fix selected=candidates.get(current);
+        return fresh(selected,now)?selected:null;
+    }
     synchronized String reason(long now) {
         if (reconcile(now)!=null) return "eligible";
         return lastReason;

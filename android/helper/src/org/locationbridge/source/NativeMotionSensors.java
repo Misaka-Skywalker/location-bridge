@@ -18,6 +18,14 @@ final class NativeMotionSensors implements SensorEventListener {
                       double magnitudeMps2, double angularSpeedRadPerSecond);
         void onInvalidated(String reason);
     }
+    interface LogSink { void offer(String line); }
+    private static final class LogSession {
+        final LogSink sink;
+        final MotionLogEncoder encoder = new MotionLogEncoder();
+        LogSession(LogSink sink) { this.sink=sink; }
+    }
+    private volatile LogSession logSession;
+    void setLogSink(LogSink sink) { logSession=sink==null ? null : new LogSession(sink); }
     private static final long SECOND = 1_000_000_000L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final SensorManager manager;
@@ -208,6 +216,20 @@ final class NativeMotionSensors implements SensorEventListener {
         synchronized(lock) { if (!desiredRunning || lifecycle!=activeLifecycle || !started || !rotationRegistered || !accelerationRegistered) return; }
         long now=SystemClock.elapsedRealtimeNanos(), t=event.timestamp;
         if(t<sessionStartNanos) return; // queued callback from an earlier registration epoch
+        // Recording observes the subscribed device-frame event before reference, accuracy,
+        // magnetic-field, and orientation gates; it never feeds the navigation pipeline.
+        LogSession logging=logSession;
+        if (logging!=null) {
+            MotionLogEncoder.Sensor kind=null;
+            if(event.sensor==acceleration) kind=gravityFallback ? MotionLogEncoder.Sensor.RAW_ACCELERATION : MotionLogEncoder.Sensor.LINEAR_ACCELERATION;
+            else if(event.sensor==gravity && gravityRegistered) kind=MotionLogEncoder.Sensor.GRAVITY;
+            else if(event.sensor==gyroscope && gyroRegistered) kind=MotionLogEncoder.Sensor.GYROSCOPE;
+            else if(event.sensor==rotation) kind=degradedRotation ? MotionLogEncoder.Sensor.GEOMAGNETIC_ROTATION_VECTOR : MotionLogEncoder.Sensor.ROTATION_VECTOR;
+            if(kind!=null) {
+                String line=logging.encoder.encode(kind,t,event.accuracy,event.values);
+                if(line!=null) try { logging.sink.offer(line); } catch(RuntimeException ignored) { /* Logging must not interrupt navigation. */ }
+            }
+        }
         if(event.sensor==gyroscope) {
             synchronized(lock) {
                 if (!gyroRegistered) return;

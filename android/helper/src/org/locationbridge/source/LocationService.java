@@ -8,15 +8,17 @@ import android.location.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import android.os.*;
 import org.json.JSONObject;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class LocationService extends Service {
     static final String STOP = "org.locationbridge.source.STOP";
+    static final String RECORD_START = "org.locationbridge.source.RECORD_START";
     static volatile LocationService instance;
     private static final int PORT = 18766;
     private static final int MAX_LINE = 16384;
@@ -54,10 +56,26 @@ public final class LocationService extends Service {
     private long sequence;
     private volatile long startupDeadline;
     private volatile boolean activated;
+    private FlightLogStore logs;
+    private final ExecutorService logControl = Executors.newSingleThreadExecutor();
+    private PowerManager.WakeLock recordingLock;
+    private volatile boolean recording, saving, standalone;
+    private boolean destroyed;
+    private final Runnable logTick = new Runnable() {
+        @Override public void run() {
+            if (!recording || destroyed) return;
+            if (!logs.isRecording()) { requestLogStop(); return; }
+            recordNavigation();
+            health.postDelayed(this, 1000);
+        }
+    };
 
     @Override public void onCreate() {
         super.onCreate(); Language.init(this);
         instance = this;
+        logs = new FlightLogStore(new File(getFilesDir(), "test-logs"));
+        recordingLock = ((PowerManager)getSystemService(POWER_SERVICE))
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LocationBridge:FlightLog");
         manager = (LocationManager) getSystemService(LOCATION_SERVICE);
         gnss = new NativeGnssMonitor(this);
         inertialEnabled = getSharedPreferences("native_inertial", MODE_PRIVATE).getBoolean("enabled", true);
@@ -71,7 +89,9 @@ public final class LocationService extends Service {
                 }
             }
             @Override public void onInvalidated(String reason) {
-                synchronized (LocationService.this) { deadReckoning.invalidate(reason,SystemClock.elapsedRealtimeNanos()); }
+                synchronized (LocationService.this) {
+                    if (inertialEnabled) deadReckoning.invalidate(reason,SystemClock.elapsedRealtimeNanos());
+                }
             }
         });
     }
@@ -83,12 +103,20 @@ public final class LocationService extends Service {
             if (!running) stopSelf(startId);
             return START_NOT_STICKY;
         }
-        if (running) return START_NOT_STICKY;
+        boolean logStart = intent != null && RECORD_START.equals(intent.getAction());
+        if (running && logStart) {
+            activated = true;
+            requestLogStart();
+            return START_NOT_STICKY;
+        }
+        if (running && server != null) { standalone = false; return START_NOT_STICKY; }
         String token = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE).getString(MainActivity.TOKEN, null);
-        if (!AuthProtocol.isHex64(token)) { stopSelf(startId); return START_NOT_STICKY; }
-        auth = new AuthProtocol(token);
+        if (!logStart && !AuthProtocol.isHex64(token)) {
+            if (!running) stopSelf(startId);
+            return START_NOT_STICKY;
+        }
         startupDeadline = deadline;
-        activated = deadline == 0; // A manual start is not a bridge launch.
+        activated = deadline == 0 || isLogging();
         if (!activated) {
             long delay = Math.max(0, deadline - SystemClock.elapsedRealtime());
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -101,23 +129,116 @@ public final class LocationService extends Service {
             }, delay);
         }
         try {
-            createNotification();
-            running = true;
-            gnss.start(fullTrackingEnabled());
-            if (inertialEnabled) motion.start();
-            maintainProviders();
-            health.postDelayed(checkProviders, 2000);
-            ServerSocket listener = new ServerSocket();
-            listener.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT));
-            server = listener;
-            new Thread(this::serve, "locationbridge-socket").start();
+            if (!running) {
+                standalone = logStart;
+                createNotification();
+                running = true;
+                gnss.start(fullTrackingEnabled());
+                if (inertialEnabled) motion.start();
+                maintainProviders();
+                health.postDelayed(checkProviders, 2000);
+            }
+            if (logStart) requestLogStart();
+            else {
+                auth = new AuthProtocol(token);
+                server = new ServerSocket(PORT, 8, InetAddress.getByName("127.0.0.1"));
+                standalone = false;
+                new Thread(this::serve, "locationbridge-socket").start();
+            }
         } catch (Exception e) {
             synchronized (this) { errors.put("service", e.getClass().getSimpleName()); }
-            stopSelf();
+            if (!isLogging()) stopSelf();
         }
         return START_NOT_STICKY;
     }
     void refreshNotification() { createNotification(); }
+    boolean isLogging() { return recording || saving; }
+    String logError() { return logs == null ? null : logs.error(); }
+
+    // Lifecycle and callbacks run on the main looper. Only opening and draining files can block.
+    private void requestLogStart() {
+        if (isLogging() || destroyed) return;
+        recording = true;
+        recordingLock.acquire();
+        long utc = System.currentTimeMillis(), elapsed = SystemClock.elapsedRealtimeNanos();
+        logControl.execute(() -> {
+            boolean opened = logs.start(utc,elapsed);
+            if (opened) {
+                try {
+                    String version = getPackageManager().getPackageInfo(getPackageName(),0).versionName;
+                    logs.offer(new JSONObject().put("type","session_info").put("app_version",version).toString());
+                } catch (android.content.pm.PackageManager.NameNotFoundException | org.json.JSONException ignored) { }
+            }
+            health.post(() -> {
+                if (!recording || destroyed) return;
+                if (!opened) { requestLogStop(); return; }
+                motion.setLogSink(logs::offer);
+                motion.start();
+                createNotification();
+                logTick.run();
+            });
+        });
+    }
+    void requestLogStop() { finishRecording("user"); }
+    private void finishRecording(String reason) {
+        if (!recording) return;
+        saving = true;
+        recording = false;
+        motion.setLogSink(null);
+        health.removeCallbacks(logTick);
+        if (!inertialEnabled && !destroyed) motion.stop();
+        long wall = System.currentTimeMillis(), elapsed = SystemClock.elapsedRealtimeNanos();
+        logControl.execute(() -> {
+            logs.offer("{\"type\":\"recording_stop\",\"reason\":\"" + reason + "\",\"elapsed_ns\":" + elapsed + "}");
+            logs.stop(wall, elapsed);
+            health.post(() -> {
+                saving = false;
+                if (recordingLock.isHeld()) recordingLock.release();
+                if (destroyed) return;
+                if (standalone) {
+                    if (logError() != null) android.widget.Toast.makeText(this,
+                            Language.tr("测试日志写入失败，请检查存储空间"),android.widget.Toast.LENGTH_LONG).show();
+                    stopSelf();
+                } else createNotification();
+            });
+        });
+    }
+    private synchronized void recordNavigation() {
+        long now = SystemClock.elapsedRealtimeNanos();
+        try {
+            long anchor = deadReckoning.lastAnchorNanos();
+            DeadReckoning.Prediction ins = inertialEnabled ? deadReckoning.observeEstimate(now) : null;
+            JSONObject sources = new JSONObject();
+            for (String name : names) sources.put(name,errors.containsKey(name) ? errors.get(name) : policy.sourceReason(name,now));
+            Selector.Fix fix = policy.currentFix(now);
+            JSONObject state = new JSONObject().put("type","navigation").put("elapsed_ns",now)
+                    .put("utc_ms",System.currentTimeMillis()).put("ins_enabled",inertialEnabled)
+                    .put("ins_state",inertialEnabled ? deadReckoning.observeReason(now) : "disabled")
+                    .put("last_anchor_ns",anchor>0 ? anchor : JSONObject.NULL)
+                    .put("ins",ins==null ? JSONObject.NULL : inertialPositionJson(ins))
+                    .put("last_correction",correctionJson(deadReckoning.lastDeviation()))
+                    .put("selected_source",fix==null ? JSONObject.NULL : fix.source)
+                    .put("selected_fix_ns",fix==null ? JSONObject.NULL : fix.elapsed)
+                    .put("providers",sources).put("motion",motion.snapshot()).put("gnss",gnss.snapshot(now));
+            logs.offer(state.toString());
+        } catch (org.json.JSONException error) { logs.offer(null); }
+    }
+    private void recordFix(Selector.Fix f, Location loc, boolean anchored) {
+        if (!recording || !logs.isRecording()) return;
+        try {
+            DeadReckoning.Deviation d = deadReckoning.lastDeviation();
+            logs.offer(new JSONObject().put("type","fix").put("source",f.source)
+                    .put("elapsed_ns",f.elapsed).put("utc_ms",f.timestamp).put("latitude",f.latitude)
+                    .put("longitude",f.longitude).put("accuracy_m",f.accuracy)
+                    .put("altitude_m",loc.hasAltitude()?finiteOrNull(loc.getAltitude()):JSONObject.NULL)
+                    .put("speed_m_s",loc.hasSpeed()?finiteOrNull(loc.getSpeed()):JSONObject.NULL)
+                    .put("speed_accuracy_m_s",loc.hasSpeedAccuracy()?finiteOrNull(loc.getSpeedAccuracyMetersPerSecond()):JSONObject.NULL)
+                    .put("bearing_deg",loc.hasBearing()?finiteOrNull(loc.getBearing()):JSONObject.NULL)
+                    .put("bearing_accuracy_deg",loc.hasBearingAccuracy()?finiteOrNull(loc.getBearingAccuracyDegrees()):JSONObject.NULL)
+                    .put("anchor_applied",anchored).put("correction",anchored && d!=null && d.elapsed==f.elapsed ?
+                            correctionJson(d) : JSONObject.NULL).toString());
+        } catch (org.json.JSONException error) { logs.offer(null); }
+    }
     private void createNotification() {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.createNotificationChannel(new NotificationChannel("location", Language.tr("定位助手"), NotificationManager.IMPORTANCE_LOW));
@@ -125,7 +246,8 @@ public final class LocationService extends Service {
         Intent stop = new Intent(this, LocationService.class).setAction(STOP);
         PendingIntent stopAction = PendingIntent.getService(this, 1, stop, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification n = new Notification.Builder(this, "location")
-                .setContentTitle(Language.tr("定位助手运行中")).setContentText(Language.tr("正在向 Termux 提供本机位置"))
+                .setContentTitle(Language.tr("定位助手运行中")).setContentText(Language.tr(recording ?
+                    "正在记录测试日志" : standalone ? "正在采集本机位置" : "正在向 Termux 提供本机位置"))
                 .setSmallIcon(android.R.drawable.ic_menu_mylocation).setContentIntent(open)
                 .setOngoing(true).addAction(new Notification.Action.Builder(null, Language.tr("停止"), stopAction).build()).build();
         startForeground(41, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
@@ -236,6 +358,7 @@ public final class LocationService extends Service {
             return;
         }
         sequence++;
+        boolean anchored=false;
         nativeAltitude.update(name,loc.isMock(),loc.getElapsedRealtimeNanos(),now,
                 loc.getLatitude(),loc.getLongitude(),loc.hasAltitude(),loc.getAltitude(),
                 loc.hasVerticalAccuracy(),loc.getVerticalAccuracyMeters());
@@ -268,9 +391,10 @@ public final class LocationService extends Service {
             } catch (Exception ignored) { gnssMotion=null; }
             if (inertialEnabled) {
                 motion.setReference(f.latitude,f.longitude,hasHeight?loc.getAltitude():0,f.timestamp,f.elapsed,hasHeight);
-                deadReckoning.anchor(f,speed,speedAccuracy,bearing,bearingAccuracy,now);
+                anchored=deadReckoning.anchor(f,speed,speedAccuracy,bearing,bearingAccuracy,now);
             }
         }
+        recordFix(f,loc,anchored);
     }
     private static Object finiteOrNull(double value) { return Double.isFinite(value)?value:JSONObject.NULL; }
     boolean fullTrackingEnabled() { return getSharedPreferences("native_gnss",MODE_PRIVATE).getBoolean("full_tracking",true); }
@@ -282,7 +406,7 @@ public final class LocationService extends Service {
         getSharedPreferences("native_inertial", MODE_PRIVATE).edit().putBoolean("enabled",enabled).apply();
         inertialEnabled=enabled;
         deadReckoning.invalidate(enabled?"waiting_gnss":"disabled",SystemClock.elapsedRealtimeNanos());
-        if (running && enabled) motion.start(); else motion.stop();
+        if (running && (enabled || recording)) motion.start(); else motion.stop();
     }
     boolean isReady() { return running && server != null; }
     private JSONObject provider(String name) throws Exception {
@@ -370,7 +494,7 @@ public final class LocationService extends Service {
                 .put("acceleration_coasting",p.accelerationCoasting).put("acceleration_coasted_ms",p.accelerationCoastedMillis);
         return sample;
     }
-    private JSONObject inertialPositionJson(DeadReckoning.Prediction p) throws Exception {
+    private JSONObject inertialPositionJson(DeadReckoning.Prediction p) throws org.json.JSONException {
         return new JSONObject().put("latitude",p.latitude).put("longitude",p.longitude)
                 .put("accuracy_m",p.uncertaintyMeters).put("accuracy_kind","model_estimate")
                 .put("speed_m_s",p.speedMetersPerSecond).put("bearing_deg",p.bearingDegrees)
@@ -378,7 +502,7 @@ public final class LocationService extends Service {
                 .put("prediction_age_ms",p.predictionAgeMillis)
                 .put("acceleration_coasting",p.accelerationCoasting).put("acceleration_coasted_ms",p.accelerationCoastedMillis);
     }
-    private Object correctionJson(DeadReckoning.Deviation d) throws Exception {
+    private Object correctionJson(DeadReckoning.Deviation d) throws org.json.JSONException {
         if(d==null) return JSONObject.NULL;
         return new JSONObject().put("reference_source","gps").put("elapsed_realtime_nanos",d.elapsed)
                 .put("east_m",d.eastMeters).put("north_m",d.northMeters).put("distance_m",d.distanceMeters)
@@ -424,10 +548,12 @@ public final class LocationService extends Service {
                         }
                     }
                 } else if (command.equals("stop")) {
-                    running = false;
+                    standalone = isLogging();
+                    if (!standalone) running = false;
                 }
                 try {
                     JSONObject response = command.equals("external_snapshot") ? ExternalBleSnapshot.snapshot(this) : snapshot();
+                    if (command.equals("stop")) response.put("running",false);
                     if (command.equals("snapshot") && response.getBoolean("running"))
                         response.put("external",BleReceiverService.positionSnapshot(this));
                     String payload = response.toString();
@@ -443,17 +569,22 @@ public final class LocationService extends Service {
                         ServerSocket listener = server;
                         server = null;
                         if (listener != null) try { listener.close(); } catch (IOException ignored) { }
-                        new Handler(Looper.getMainLooper()).post(this::stopSelf);
+                        if (!standalone) new Handler(Looper.getMainLooper()).post(this::stopSelf);
                     }
                 }
+                if (command.equals("stop")) break;
             } catch (Exception e) {
                 if (!running || server == null) break;
             }
         }
     }
     @Override public void onDestroy() {
+        destroyed = true;
         running = false;
         health.removeCallbacksAndMessages(null);
+        finishRecording("service_stopped");
+        logControl.shutdown();
+        if (recordingLock.isHeld()) recordingLock.release();
         ServerSocket socket = server; server = null;
         if (socket != null) try { socket.close(); } catch (IOException ignored) { }
         for (LocationListener listener : listeners.values()) {

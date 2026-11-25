@@ -24,6 +24,8 @@ In 0.5.3 the INS page groups position and calibration data in five fixed rows. T
 
 In 0.6.0 **CONNECT** selects USB or Wi-Fi at startup. Wi-Fi can use the phone hotspot when the paired iPad joins it. The INS page shows its state once and keeps four fixed rows for readings.
 
+Version 0.6.3 adds local flight test logs and nautical-mile readouts for INS position differences. See [recording and interpreting a test](docs/public/adaptive-core.md#flight-test-logs).
+
 ## Status and limits
 
 - Fixed points and simulated tracks have been observed on an iPad over Wi-Fi and USB. The tested USB path does not require a LAN. Continuous real-world movement through the full Android-to-iPad path has not yet been validated; long-duration and lock-screen operation remain unverified.

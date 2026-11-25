@@ -7,6 +7,24 @@ import java.util.Map;
 final class LanguageCatalog {
     private static final Map<String,String> EN = new HashMap<>();
     static {
+        EN.put("正在记录测试日志", "Recording test log");
+        EN.put("正在采集本机位置", "Collecting device location");
+        EN.put("测试日志", "Test logs");
+        EN.put("● 测试日志记录中", "● TEST LOG RECORDING");
+        EN.put("日志包含经纬度和运动数据，仅保存在本机，除非您选择导出。", "Logs contain latitude, longitude and motion data. They stay on this device unless you export them.");
+        EN.put("停止记录", "Stop recording");
+        EN.put("开始记录", "Start recording");
+        EN.put("导出已保存的日志", "Export a saved log");
+        EN.put("正在停止记录，请稍后导出", "Stopping recording; export after saving completes");
+        EN.put("请先停止记录，等待保存完成", "Stop recording and wait for saving to finish first");
+        EN.put("暂无已保存的测试日志", "No saved test logs");
+        EN.put("选择要导出的日志", "Select a log to export");
+        EN.put("无法打开系统文件选择器", "Cannot open the system file picker");
+        EN.put("无法找到所选日志，请重试", "Could not find the selected log; try again");
+        EN.put("日志导出完成", "Log exported");
+        EN.put("日志导出失败，请重试", "Log export failed; try again");
+        EN.put("测试日志写入失败，请检查存储空间", "Test log write failed; check storage space");
+        EN.put("需要精确位置权限才能记录测试日志", "Precise location permission is required to record a test log");
         EN.put("正在协商 MTU", "MTU NEGOTIATION");
         EN.put("正在发现服务", "SERVICE DISCOVERY");
         EN.put("正在订阅", "SUBSCRIBING");

@@ -18,6 +18,10 @@ final class DisplayUnits {
         return String.format(Locale.ROOT,Math.abs(meters)>=1000?(signed?"%+.2f km":"%.2f km"):(signed?"%+.1f m":"%.1f m"),
                 Math.abs(meters)>=1000?meters/1000:meters);
     }
+    static String correctionDistance(double meters,boolean signed) {
+        if(!Double.isFinite(meters)) return "---";
+        return distance(meters,signed)+String.format(Locale.ROOT,signed?" / %+.2f NM":" / %.2f NM",meters/1852.0);
+    }
     static String duration(double seconds) {
         if(!Double.isFinite(seconds) || seconds<0) return "---";
         return String.format(Locale.ROOT,seconds<60?"%.1f s":seconds<3600?"%.1f min":"%.2f h",

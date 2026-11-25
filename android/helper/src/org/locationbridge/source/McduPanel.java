@@ -13,7 +13,7 @@ final class McduPanel extends LinearLayout {
     interface Actions { void run(String name); }
     static final int BODY=0xff171c21, SCREEN=0xff080e12, WHITE=0xffe4ecee;
     static final int CYAN=0xff68dbe4, GREEN=0xff8ce3a8, AMBER=0xffffc772, MUTED=0xffa9b7c2;
-    private final TextView title, annunciator, scratch, pairing, bridgeHeading, bridgeDetails;
+    private final TextView title, annunciator, scratch, pairing, bridgeHeading, bridgeDetails, recording;
     private final LinearLayout[] rows=new LinearLayout[6];
     private final TextView[][] labels=new TextView[6][2], values=new TextView[6][2];
     private String page="POS";
@@ -36,6 +36,7 @@ final class McduPanel extends LinearLayout {
         bridgeHeading=text(Language.tr("iPad：尚未收到状态"),14,AMBER);bridgeHeading.setPadding(0,dp(8),0,0);display.addView(bridgeHeading);
         bridgeDetails=text("",11,MUTED);bridgeDetails.setVisibility(GONE);display.addView(bridgeDetails);
         annunciator=text(Language.tr("● 手机定位已停止"),12,AMBER);annunciator.setPadding(0,dp(4),0,dp(4));display.addView(annunciator);
+        recording=text(Language.tr("● 测试日志记录中"),12,AMBER);recording.setVisibility(GONE);display.addView(recording);
         for(int row=0;row<6;row++) {
             LinearLayout line=new LinearLayout(context);line.setOrientation(HORIZONTAL);line.setGravity(Gravity.CENTER_VERTICAL);
             rows[row]=line;
@@ -112,6 +113,7 @@ final class McduPanel extends LinearLayout {
         view.setText(message);
         view.setVisibility(message.isEmpty()?GONE:VISIBLE);
     }
+    void recording(boolean active){recording.setVisibility(active?VISIBLE:GONE);}
     void pairing(String message){showMessage(pairing,message);}
     void commandStatus(JSONObject value){commandStatus=value;}
     void fault(String text){annunciator.setText(Language.tr("● 状态读取失败"));annunciator.setTextColor(AMBER);showMessage(scratch,text);}
@@ -219,8 +221,11 @@ final class McduPanel extends LinearLayout {
             rows[r].setVisibility(r<count?VISIBLE:GONE);
             // Keep both column headings level when one measurement uses two units.
             boolean dualUnits=(page.equals("POS") && r==5) || (page.equals("GNSS") && r==0)
-                    || (page.equals("GNSS") && r==2) || (page.equals("INS") && r==1);
-            for(TextView value:values[r]) value.setMinLines(dualUnits?2:1);
+                    || (page.equals("GNSS") && r==2) || (page.equals("INS") && r>=1 && r<=3);
+            for(TextView value:values[r]) {
+                value.setMinLines(dualUnits?2:1);
+                value.setTextSize(page.equals("INS") && r>=2 && r<=3?13:16);
+            }
         }
     }
     private static String provider(JSONObject providers, String key) {
@@ -232,6 +237,7 @@ final class McduPanel extends LinearLayout {
     }
     private static String speed(JSONObject o,String key){return DisplayUnits.speed(o==null?Double.NaN:o.optDouble(key));}
     private static String distance(JSONObject o,String key,boolean signed){return DisplayUnits.distance(o==null?Double.NaN:o.optDouble(key),signed);}
+    private static String correctionDistance(JSONObject o,String key,boolean signed){return DisplayUnits.correctionDistance(o==null?Double.NaN:o.optDouble(key),signed);}
     private String elapsed(JSONObject o,String key){
         return o==null || o.isNull(key)?"---":DisplayUnits.duration((snapshot.optLong("elapsed_realtime_nanos")-o.optLong(key))/1e9);
     }
@@ -296,8 +302,8 @@ final class McduPanel extends LinearLayout {
             annunciator.setTextColor(ins!=null && !ins.optBoolean("acceleration_coasting") && !active && reason.isEmpty()?GREEN:AMBER);
             row(0,Language.tr("纬度"),number(ins,"latitude","%+.5f"),Language.tr("经度"),number(ins,"longitude","%+.5f"));
             row(1,Language.tr("惯导位置不确定度"),distance(ins,"accuracy_m",false),Language.tr("惯导地速"),speed(ins,"speed_m_s"));
-            row(2,Language.tr("上次校准位置差"),distance(correction,"distance_m",false),Language.tr("距上次 GNSS 校准"),elapsed(i,"last_anchor_elapsed_realtime_nanos"));
-            row(3,Language.tr("东西差（+东）"),distance(correction,"east_m",true),Language.tr("南北差（+北）"),distance(correction,"north_m",true));
+            row(2,Language.tr("上次校准位置差"),correctionDistance(correction,"distance_m",false),Language.tr("距上次 GNSS 校准"),elapsed(i,"last_anchor_elapsed_realtime_nanos"));
+            row(3,Language.tr("东西差（+东）"),correctionDistance(correction,"east_m",true),Language.tr("南北差（+北）"),correctionDistance(correction,"north_m",true));
             if(correction!=null && correction.optLong("elapsed_realtime_nanos")!=i.optLong("last_anchor_elapsed_realtime_nanos"))
                 note=Language.tr("偏差记录龄期")+"  "+elapsed(correction,"elapsed_realtime_nanos");
         }else if(page.equals("SYS")){

@@ -11,7 +11,11 @@ import android.view.View;
 import android.widget.*;
 import org.json.JSONObject;
 import java.util.ArrayList;
+import java.io.File;
+import java.io.OutputStream;
 import java.util.Locale;
+import java.util.Date;
+import java.text.DateFormat;
 
 public final class MainActivity extends Activity {
     private McduPanel panel;
@@ -22,6 +26,10 @@ public final class MainActivity extends Activity {
     private String candidateToken;
     private TermuxCommand pendingTermuxCommand;
     private static final int TERMUX_PERMISSION_REQUEST=24;
+    private static final int EXPORT_LOG_REQUEST=25;
+    private String exportLogName;
+    private boolean pendingLogStart;
+    private String shownLogError;
     static final String PREFS = "location_bridge_pairing";
     static final String TOKEN = "token";
     private final Runnable refresh = new Runnable() {
@@ -29,6 +37,7 @@ public final class MainActivity extends Activity {
     };
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); Language.init(this);
+        if (state != null) { exportLogName=state.getString("export_log_name"); pendingLogStart=state.getBoolean("pending_log_start"); }
         receiveCandidate(getIntent());
         receiveBridgeStart(getIntent());
         getWindow().setStatusBarColor(McduPanel.BODY);
@@ -42,6 +51,8 @@ public final class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         state.putString("instrument_page", panel.currentPage());
+        state.putString("export_log_name", exportLogName);
+        state.putBoolean("pending_log_start", pendingLogStart);
     }
     private void buildPanel(String currentPage) {
         ScrollView scroll=new ScrollView(this);
@@ -142,13 +153,14 @@ public final class MainActivity extends Activity {
             case "LOC": startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));break;
             case "SETTINGS":
                 boolean paired=getSharedPreferences(PREFS,MODE_PRIVATE).contains(TOKEN);
-                String[] labels={Language.tr("定位和通知权限"),Language.tr(paired?"Termux 配对信息":"与 Termux 配对"),Language.tr("系统定位设置"),Language.tr("GNSS 连续跟踪"),Language.tr("启动 iPad 连接（USB）"),Language.tr("启动 iPad 连接（Wi-Fi）"),Language.tr("Termux 启动设置"),"Language / 语言"};
-                String[] actions={"AUTH","PAIR","LOC","TRACK","TERM","CONNECT_WIFI","TERM_HELP","LANG"};
+                String[] labels={Language.tr("测试日志"),Language.tr("定位和通知权限"),Language.tr(paired?"Termux 配对信息":"与 Termux 配对"),Language.tr("系统定位设置"),Language.tr("GNSS 连续跟踪"),Language.tr("启动 iPad 连接（USB）"),Language.tr("启动 iPad 连接（Wi-Fi）"),Language.tr("Termux 启动设置"),"Language / 语言"};
+                String[] actions={"LOG","AUTH","PAIR","LOC","TRACK","TERM","CONNECT_WIFI","TERM_HELP","LANG"};
                 new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
                         .setTitle(Language.tr("设置"))
                         .setItems(labels,(dialog,index)->runPanelAction(actions[index]))
                         .setNegativeButton(Language.tr("返回"),null).show();
                 break;
+            case "LOG": showFlightLog(); break;
             case "TRACK":
                 boolean tracking=getSharedPreferences("native_gnss",MODE_PRIVATE).getBoolean("full_tracking",true);
                 new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
@@ -248,6 +260,12 @@ public final class MainActivity extends Activity {
             else Toast.makeText(this,Language.tr(checkSelfPermission(TermuxBridge.PERMISSION)==PackageManager.PERMISSION_GRANTED?"授权完成，请再次点击连接按钮":"未获得权限；可在系统应用权限中允许 Termux 命令"),Toast.LENGTH_LONG).show();
             return;
         }
+        if(requestCode==1 && pendingLogStart) {
+            pendingLogStart=false;
+            if(fineGranted()) startFlightLog();
+            else Toast.makeText(this,Language.tr("需要精确位置权限才能记录测试日志"),Toast.LENGTH_LONG).show();
+            updateStatus(); return;
+        }
         // After an external launch requiring permission, stay on this page for a clear user action.
         bridgeStart = false;
         bridgeAuth = null;
@@ -277,6 +295,100 @@ public final class MainActivity extends Activity {
             if (returnToTermux) returnToTermuxWhenReady(30);
         } catch (RuntimeException e) { Toast.makeText(this, Language.tr("启动失败：") + e.getClass().getSimpleName(), Toast.LENGTH_LONG).show(); }
     }
+    private void showFlightLog() {
+        LocationService service=LocationService.instance;
+        boolean recording=service!=null && service.isLogging();
+        String[] choices=recording
+                ? new String[]{Language.tr("停止记录")}
+                : new String[]{Language.tr("开始记录"),Language.tr("导出已保存的日志")};
+        new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
+                .setTitle(Language.tr("测试日志")+"\n\n"+Language.tr("日志包含经纬度和运动数据，仅保存在本机，除非您选择导出。"))
+                .setItems(choices,(dialog,index)->{
+                    if(recording) {
+                        LocationService current=LocationService.instance;
+                        if(current!=null) current.requestLogStop();
+                        Toast.makeText(this,Language.tr("正在停止记录，请稍后导出"),Toast.LENGTH_SHORT).show();
+                    } else if(index==0) startFlightLog();
+                    else listFlightLogs();
+                }).setNegativeButton(Language.tr("返回"),null).show();
+    }
+    private void startFlightLog() {
+        if(!fineGranted()) { pendingLogStart=true; requestPermissionsIfNeeded(); return; }
+        LocationManager manager=(LocationManager)getSystemService(LOCATION_SERVICE);
+        if(!manager.isLocationEnabled()) { Toast.makeText(this,Language.tr("请先打开系统定位"),Toast.LENGTH_LONG).show(); return; }
+        try {
+            shownLogError=null;
+            startForegroundService(new Intent(this,LocationService.class).setAction(LocationService.RECORD_START));
+            handler.postDelayed(this::updateStatus,200);
+        } catch(RuntimeException e) { Toast.makeText(this,Language.tr("启动失败：")+e.getClass().getSimpleName(),Toast.LENGTH_LONG).show(); }
+    }
+    private void listFlightLogs() {
+        LocationService service=LocationService.instance;
+        if(service!=null && service.isLogging()) {
+            Toast.makeText(this,Language.tr("请先停止记录，等待保存完成"),Toast.LENGTH_LONG).show(); return;
+        }
+        File directory=new File(getFilesDir(),"test-logs");
+        new Thread(()->{
+            File[] files=FlightLogStore.recordings(directory);
+            handler.post(()->{
+                if(isFinishing() || isDestroyed()) return;
+                LocationService current=LocationService.instance;
+                if(current!=null && current.isLogging()) {
+                    Toast.makeText(this,Language.tr("请先停止记录，等待保存完成"),Toast.LENGTH_LONG).show(); return;
+                }
+                if(files==null || files.length==0) { Toast.makeText(this,Language.tr("暂无已保存的测试日志"),Toast.LENGTH_LONG).show(); return; }
+                String[] names=new String[files.length];
+                for(int i=0;i<files.length;i++) names[i]=flightLogLabel(files[i].getName());
+                new android.app.AlertDialog.Builder(new android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
+                        .setTitle(Language.tr("选择要导出的日志"))
+                        .setItems(names,(dialog,index)->{
+                            exportLogName=files[index].getName();
+                            Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                                    .setType("application/x-ndjson").putExtra(Intent.EXTRA_TITLE,exportLogName);
+                            try { startActivityForResult(intent,EXPORT_LOG_REQUEST); }
+                            catch(ActivityNotFoundException e) { exportLogName=null; Toast.makeText(this,Language.tr("无法打开系统文件选择器"),Toast.LENGTH_LONG).show(); }
+                        }).setNegativeButton(Language.tr("返回"),null).show();
+            });
+        },"flight-log-list").start();
+    }
+    private String flightLogLabel(String name) {
+        String prefix="flight-log-";
+        int end=name.indexOf('-',prefix.length()+1);
+        try {
+            long started=Long.parseLong(name.substring(prefix.length(),end));
+            DateFormat format=DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.MEDIUM,
+                    Language.isEnglish()?Locale.US:Locale.SIMPLIFIED_CHINESE);
+            return format.format(new Date(started))+"\n"+name;
+        } catch(RuntimeException error) { return name; }
+    }
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data) {
+        super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode!=EXPORT_LOG_REQUEST) return;
+        String selected=exportLogName; exportLogName=null;
+        if(resultCode!=RESULT_OK || data==null || data.getData()==null) return;
+        if(selected==null) { Toast.makeText(this,Language.tr("无法找到所选日志，请重试"),Toast.LENGTH_LONG).show(); return; }
+        LocationService current=LocationService.instance;
+        if(current!=null && current.isLogging()) { Toast.makeText(this,Language.tr("请先停止记录，等待保存完成"),Toast.LENGTH_LONG).show(); return; }
+        android.net.Uri destination=data.getData();
+        android.content.Context app=getApplicationContext();
+        new Thread(()->{
+            boolean success=false;
+            try {
+                File source=null;
+                File[] files=FlightLogStore.recordings(new File(app.getFilesDir(),"test-logs"));
+                if(files!=null) for(File file:files) if(file.getName().equals(selected)) { source=file; break; }
+                if(source==null) throw new java.io.IOException("Missing log");
+                try(OutputStream out=app.getContentResolver().openOutputStream(destination,"w")) {
+                    if(out==null) throw new java.io.IOException("Cannot open destination");
+                    FlightLogStore.copyCompleteLines(source,out);
+                    out.flush();
+                }
+                success=true;
+            } catch(Exception ignored) { }
+            final boolean result=success;
+            new Handler(Looper.getMainLooper()).post(()->Toast.makeText(app,Language.tr(result?"日志导出完成":"日志导出失败，请重试"),Toast.LENGTH_LONG).show());
+        },"flight-log-export").start();
+    }
     private void returnToTermuxWhenReady(int attempts) {
         LocationService service = LocationService.instance;
         if (service != null && service.isReady()) {
@@ -294,6 +406,12 @@ public final class MainActivity extends Activity {
         boolean enabled=getSharedPreferences("native_inertial",MODE_PRIVATE).getBoolean("enabled",true);
         JSONObject bridge=BridgeStatusReceiver.snapshot(this);
         panel.commandStatus(TermuxBridge.snapshot(this));
+        panel.recording(service != null && service.isLogging());
+        String logError=service == null ? null : service.logError();
+        if(logError != null && !logError.isEmpty() && !logError.equals(shownLogError)) {
+            shownLogError=logError;
+            Toast.makeText(this,Language.tr("测试日志写入失败，请检查存储空间"),Toast.LENGTH_LONG).show();
+        }
         try {panel.update(service==null?null:service.snapshot(),fineGranted(),enabled,bridge);}
         catch(Exception error){panel.update(null,fineGranted(),enabled,bridge);panel.fault(Language.tr("定位状态读取失败，请停止后重新启动"));}
     }
